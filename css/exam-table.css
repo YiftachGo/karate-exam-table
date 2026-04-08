@@ -1,0 +1,193 @@
+.exam-table-page .page-title {
+    margin: 0;
+}
+
+.exam-date-badge {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: var(--bg);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    background: var(--bg-card);
+    -webkit-overflow-scrolling: touch;
+}
+
+.grading-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.grading-table th,
+.grading-table td {
+    border: 1px solid var(--border);
+    padding: 8px;
+    text-align: start;
+    vertical-align: top;
+}
+
+.grading-table thead th {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.sticky-col {
+    position: sticky;
+    right: 0;
+    z-index: 3;
+    background: var(--sticky-bg);
+    min-width: 160px;
+    max-width: 200px;
+}
+
+[dir="ltr"] .sticky-col {
+    right: auto;
+    left: 0;
+}
+
+thead .sticky-col {
+    z-index: 4;
+    background: var(--primary-dark);
+}
+
+.category-cell {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--primary-dark);
+    box-shadow: -4px 0 8px rgba(0,0,0,0.05);
+}
+
+[dir="ltr"] .category-cell {
+    box-shadow: 4px 0 8px rgba(0,0,0,0.05);
+}
+
+.category-header {
+    font-size: 0.85rem;
+}
+
+.examinee-header {
+    min-width: 180px;
+    max-width: 220px;
+}
+
+.examinee-header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+.examinee-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.5);
+}
+
+.examinee-name-link {
+    color: white;
+    text-decoration: none;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.examinee-name-link:hover {
+    text-decoration: underline;
+}
+
+.examinee-rank {
+    font-size: 0.75rem;
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+.examinee-header .remove-examinee-btn {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    padding: 2px 5px;
+    font-size: 0.65rem;
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+
+[dir="ltr"] .examinee-header .remove-examinee-btn {
+    left: auto;
+    right: -4px;
+}
+
+.examinee-header:hover .remove-examinee-btn {
+    opacity: 1;
+}
+
+.grade-cell {
+    padding: 4px;
+}
+
+.grade-textarea {
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-size: 0.85rem;
+    resize: vertical;
+    font-family: inherit;
+    background: transparent;
+    transition: border-color var(--transition), background var(--transition);
+}
+
+.grade-textarea:hover {
+    border-color: var(--border);
+    background: #fafafa;
+}
+
+.grade-textarea:focus {
+    border-color: var(--primary-light);
+    background: white;
+    box-shadow: 0 0 0 2px rgba(57, 73, 171, 0.1);
+    outline: none;
+}
+
+.grading-table tbody tr:nth-child(even) {
+    background: #fafbff;
+}
+
+.grading-table tbody tr:nth-child(even) .sticky-col {
+    background: #e8eaf0;
+}
+
+@media print {
+    .table-wrapper {
+        overflow: visible;
+        box-shadow: none;
+    }
+    .grading-table {
+        min-width: auto;
+        font-size: 0.75rem;
+    }
+    .grade-textarea {
+        border: none;
+        padding: 2px;
+        min-height: auto;
+        resize: none;
+    }
+    .remove-examinee-btn {
+        display: none !important;
+    }
+}

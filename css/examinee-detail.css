@@ -1,0 +1,67 @@
+.examinee-detail-page {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.detail-card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+}
+
+.photo-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.examinee-photo {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--primary-light);
+}
+
+.photo-placeholder {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 3px dashed var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    color: var(--text-secondary);
+}
+
+.photo-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.photo-upload-label {
+    cursor: pointer;
+}
+
+.detail-form .form-group input {
+    width: 100%;
+}
+
+.readonly-field {
+    background: var(--bg) !important;
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.form-actions {
+    margin-top: 24px;
+    display: flex;
+    gap: 10px;
+}
