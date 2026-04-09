@@ -21,21 +21,32 @@ App.Storage = (function () {
     async function getExamIndex() {
         var userId = App.Auth.getUserId();
         if (!userId) return [];
-        var snapshot = await App.db.collection('exams')
-            .where('trainerIds', 'array-contains', userId)
-            .orderBy('createdAt', 'desc')
-            .get();
-        return snapshot.docs.map(function (doc) {
-            var d = doc.data();
-            return {
-                id: doc.id,
-                name: d.name,
-                date: d.date,
-                createdAt: d.createdAt,
-                examineeCount: d.examineeCount || 0,
-                ownerId: d.ownerId
-            };
-        });
+        try {
+            var snapshot = await App.db.collection('exams')
+                .where('trainerIds', 'array-contains', userId)
+                .get();
+            var exams = snapshot.docs.map(function (doc) {
+                var d = doc.data();
+                return {
+                    id: doc.id,
+                    name: d.name,
+                    date: d.date,
+                    createdAt: d.createdAt,
+                    examineeCount: d.examineeCount || 0,
+                    ownerId: d.ownerId
+                };
+            });
+            // Sort client-side (avoids needing composite index)
+            exams.sort(function (a, b) {
+                var ta = a.createdAt ? a.createdAt.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime() : 0;
+                var tb = b.createdAt ? b.createdAt.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt).getTime() : 0;
+                return tb - ta;
+            });
+            return exams;
+        } catch (err) {
+            console.error('getExamIndex error:', err);
+            return [];
+        }
     }
 
     async function getExam(examId) {

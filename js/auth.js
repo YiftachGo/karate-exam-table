@@ -16,10 +16,14 @@ App.Auth = (function () {
                     displayName: user.displayName || user.email.split('@')[0],
                     email: user.email,
                     lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                }, { merge: true }).catch(function (err) {
+                    console.warn('Failed to update user doc:', err);
+                });
             }
             authReadyResolve(user);
-            App.updateHeaderAuth();
+            if (typeof App.updateHeaderAuth === 'function') {
+                App.updateHeaderAuth();
+            }
         });
     }
 
