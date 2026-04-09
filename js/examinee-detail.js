@@ -1,11 +1,12 @@
 var App = window.App || {};
 
 App.ExamineeDetail = (function () {
-    function render(examId, examineeId) {
+    async function render(examId, examineeId) {
         var t = App.I18n.t;
-        var exam = App.Storage.getExam(examId);
         var container = document.getElementById('app');
+        App.showLoading();
 
+        var exam = await App.Storage.getExam(examId);
         if (!exam || !exam.examinees[examineeId]) {
             App.Router.navigate('#/exam/' + examId);
             return;
@@ -21,8 +22,8 @@ App.ExamineeDetail = (function () {
 
         // Photo section
         html += '<div class="photo-section">';
-        if (ex.photo) {
-            html += '<img src="' + ex.photo + '" class="examinee-photo" id="examinee-photo" alt="">';
+        if (ex.photoUrl) {
+            html += '<img src="' + ex.photoUrl + '" class="examinee-photo" id="examinee-photo" alt="">';
         } else {
             html += '<div class="photo-placeholder" id="examinee-photo">&#128100;</div>';
         }
@@ -31,7 +32,7 @@ App.ExamineeDetail = (function () {
         html += t('uploadPhoto');
         html += '<input type="file" id="photo-input" accept="image/*" style="display:none">';
         html += '</label>';
-        if (ex.photo) {
+        if (ex.photoUrl) {
             html += '<button class="btn btn-sm btn-danger" id="btn-remove-photo">' + t('removePhoto') + '</button>';
         }
         html += '</div>';
@@ -87,8 +88,6 @@ App.ExamineeDetail = (function () {
     }
 
     function bindEvents(examId, examineeId) {
-        var t = App.I18n.t;
-
         document.getElementById('btn-back-table').addEventListener('click', function () {
             App.Router.navigate('#/exam/' + examId);
         });
@@ -97,65 +96,42 @@ App.ExamineeDetail = (function () {
             saveExaminee(examId, examineeId);
         });
 
-        // Auto-calculate age when DOB changes
         document.getElementById('field-dateOfBirth').addEventListener('change', function () {
             var age = App.Utils.calculateAge(this.value);
             document.getElementById('field-age').value = age;
         });
 
-        // Photo upload
-        document.getElementById('photo-input').addEventListener('change', function (e) {
+        // Photo upload via Firebase Storage
+        document.getElementById('photo-input').addEventListener('change', async function (e) {
             var file = e.target.files[0];
             if (!file) return;
-            if (file.size > 2 * 1024 * 1024) {
-                alert('Max file size: 2MB');
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Max file size: 5MB');
                 return;
             }
-            var reader = new FileReader();
-            reader.onload = function (ev) {
-                // Resize image before saving
-                resizeImage(ev.target.result, 200, function (dataUrl) {
-                    App.Storage.updateExaminee(examId, examineeId, { photo: dataUrl });
-                    render(examId, examineeId);
-                });
-            };
-            reader.readAsDataURL(file);
+            try {
+                App.showToast(App.I18n.t('loading'));
+                await App.PhotoUpload.uploadPhoto(examId, examineeId, file);
+                render(examId, examineeId);
+            } catch (err) {
+                alert(App.I18n.t('error') + ': ' + err.message);
+            }
         });
 
-        // Remove photo
         var removePhotoBtn = document.getElementById('btn-remove-photo');
         if (removePhotoBtn) {
-            removePhotoBtn.addEventListener('click', function () {
-                App.Storage.updateExaminee(examId, examineeId, { photo: '' });
-                render(examId, examineeId);
+            removePhotoBtn.addEventListener('click', async function () {
+                try {
+                    await App.PhotoUpload.removePhoto(examId, examineeId);
+                    render(examId, examineeId);
+                } catch (err) {
+                    alert(App.I18n.t('error') + ': ' + err.message);
+                }
             });
         }
     }
 
-    function resizeImage(dataUrl, maxSize, callback) {
-        var img = new Image();
-        img.onload = function () {
-            var canvas = document.createElement('canvas');
-            var w = img.width;
-            var h = img.height;
-            if (w > maxSize || h > maxSize) {
-                if (w > h) {
-                    h = Math.round(h * maxSize / w);
-                    w = maxSize;
-                } else {
-                    w = Math.round(w * maxSize / h);
-                    h = maxSize;
-                }
-            }
-            canvas.width = w;
-            canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            callback(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.src = dataUrl;
-    }
-
-    function saveExaminee(examId, examineeId) {
+    async function saveExaminee(examId, examineeId) {
         var data = {
             firstName: document.getElementById('field-firstName').value.trim(),
             lastName: document.getElementById('field-lastName').value.trim(),
@@ -166,7 +142,7 @@ App.ExamineeDetail = (function () {
             lastExamDate: document.getElementById('field-lastExamDate').value,
             trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value
         };
-        App.Storage.updateExaminee(examId, examineeId, data);
+        await App.Storage.updateExaminee(examId, examineeId, data);
         App.showToast(App.I18n.t('dataSaved'));
     }
 

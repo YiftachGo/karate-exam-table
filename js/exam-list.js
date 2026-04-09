@@ -1,10 +1,12 @@
 var App = window.App || {};
 
 App.ExamList = (function () {
-    function render() {
+    async function render() {
         var t = App.I18n.t;
         var container = document.getElementById('app');
-        var exams = App.Storage.getExamIndex();
+        App.showLoading();
+
+        var exams = await App.Storage.getExamIndex();
 
         var html = '<div class="exam-list-page">';
         html += '<div class="toolbar">';
@@ -13,9 +15,6 @@ App.ExamList = (function () {
         html += '<button class="btn btn-primary" id="btn-new-exam">+ ' + t('newExam') + '</button>';
         html += '<button class="btn btn-outline" id="btn-import-exam">' + t('importExam') + '</button>';
         html += '<input type="file" id="import-file" accept=".json" style="display:none">';
-        if (exams.length > 0) {
-            html += '<button class="btn btn-outline" id="btn-export-all">' + t('exportAll') + '</button>';
-        }
         html += '</div>';
 
         if (exams.length === 0) {
@@ -26,10 +25,13 @@ App.ExamList = (function () {
         } else {
             html += '<div class="exam-grid">';
             exams.forEach(function (exam) {
+                var isOwner = exam.ownerId === App.Auth.getUserId();
                 html += '<div class="exam-card" data-id="' + exam.id + '">';
                 html += '<div class="exam-card-header">';
                 html += '<h3>' + App.Utils.escapeHtml(exam.name) + '</h3>';
-                html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
+                if (isOwner) {
+                    html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
+                }
                 html += '</div>';
                 html += '<div class="exam-card-body">';
                 html += '<span class="exam-date">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
@@ -72,13 +74,6 @@ App.ExamList = (function () {
             });
         });
 
-        var exportAllBtn = document.getElementById('btn-export-all');
-        if (exportAllBtn) {
-            exportAllBtn.addEventListener('click', function () {
-                App.Storage.exportAllExams();
-            });
-        }
-
         document.querySelectorAll('.exam-card').forEach(function (card) {
             card.addEventListener('click', function (e) {
                 if (e.target.closest('.delete-exam-btn') || e.target.closest('.export-exam-btn')) return;
@@ -87,10 +82,10 @@ App.ExamList = (function () {
         });
 
         document.querySelectorAll('.delete-exam-btn').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
+            btn.addEventListener('click', async function (e) {
                 e.stopPropagation();
                 if (confirm(t('confirmDeleteExam'))) {
-                    App.Storage.deleteExam(btn.dataset.id);
+                    await App.Storage.deleteExam(btn.dataset.id);
                     render();
                 }
             });
@@ -139,14 +134,14 @@ App.ExamList = (function () {
         document.getElementById('new-exam-name').focus();
     }
 
-    function createExam() {
+    async function createExam() {
         var name = document.getElementById('new-exam-name').value.trim();
         var date = document.getElementById('new-exam-date').value;
         if (!name) {
             document.getElementById('new-exam-name').focus();
             return;
         }
-        var exam = App.Storage.createExam(name, date);
+        var exam = await App.Storage.createExam(name, date);
         App.Router.navigate('#/exam/' + exam.id);
     }
 

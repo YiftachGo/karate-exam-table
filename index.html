@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>טבלת בוחנים - מבחן קרטה</title>
     <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/auth.css">
     <link rel="stylesheet" href="css/exam-list.css">
     <link rel="stylesheet" href="css/exam-table.css">
     <link rel="stylesheet" href="css/examinee-detail.css">
+    <link rel="stylesheet" href="css/invite.css">
     <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -16,18 +18,34 @@
             <h1 id="app-title">טבלת בוחנים</h1>
         </div>
         <div class="header-left">
+            <span id="user-display" class="user-display" style="display:none"></span>
+            <button id="btn-logout" class="btn btn-icon" style="display:none">יציאה</button>
             <button id="lang-toggle" class="btn btn-icon" title="Switch Language">EN</button>
         </div>
     </header>
-    <main id="app"></main>
+    <main id="app">
+        <div class="loading-screen"><div class="spinner"></div></div>
+    </main>
 
+    <!-- Firebase SDK (Compat - CDN, no npm needed) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <!-- Firebase Storage not used - photos stored as base64 in Firestore -->
+
+    <!-- App scripts -->
     <script src="js/utils.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/router.js"></script>
+    <script src="js/auth-page.js"></script>
     <script src="js/exam-list.js"></script>
     <script src="js/exam-table.js"></script>
     <script src="js/examinee-detail.js"></script>
+    <script src="js/invite-page.js"></script>
+    <script src="js/photo-upload.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,96 +1,112 @@
 var App = window.App || {};
 
 App.Storage = (function () {
-    var PREFIX = 'krt_';
-    var INDEX_KEY = PREFIX + 'exam_index';
-    var SETTINGS_KEY = PREFIX + 'settings';
+
+    // --- Settings (stay in localStorage - per device) ---
 
     function getSettings() {
         try {
-            return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { language: 'he' };
+            return JSON.parse(localStorage.getItem('krt_settings')) || { language: 'he' };
         } catch (e) {
             return { language: 'he' };
         }
     }
 
     function saveSettings(settings) {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        localStorage.setItem('krt_settings', JSON.stringify(settings));
     }
 
-    function getExamIndex() {
-        try {
-            return JSON.parse(localStorage.getItem(INDEX_KEY)) || [];
-        } catch (e) {
-            return [];
-        }
+    // --- Exams (Firestore) ---
+
+    async function getExamIndex() {
+        var userId = App.Auth.getUserId();
+        if (!userId) return [];
+        var snapshot = await App.db.collection('exams')
+            .where('trainerIds', 'array-contains', userId)
+            .orderBy('createdAt', 'desc')
+            .get();
+        return snapshot.docs.map(function (doc) {
+            var d = doc.data();
+            return {
+                id: doc.id,
+                name: d.name,
+                date: d.date,
+                createdAt: d.createdAt,
+                examineeCount: d.examineeCount || 0,
+                ownerId: d.ownerId
+            };
+        });
     }
 
-    function saveExamIndex(index) {
-        localStorage.setItem(INDEX_KEY, JSON.stringify(index));
-    }
+    async function getExam(examId) {
+        var doc = await App.db.collection('exams').doc(examId).get();
+        if (!doc.exists) return null;
+        var exam = doc.data();
+        exam.id = doc.id;
 
-    function getExam(examId) {
-        try {
-            return JSON.parse(localStorage.getItem(PREFIX + examId));
-        } catch (e) {
-            return null;
-        }
-    }
+        // Load examinees subcollection
+        var examineesSnap = await App.db.collection('exams').doc(examId)
+            .collection('examinees').orderBy('order').get();
+        exam.examinees = {};
+        examineesSnap.docs.forEach(function (d) {
+            exam.examinees[d.id] = Object.assign({ id: d.id }, d.data());
+        });
 
-    function saveExam(exam) {
-        exam.updatedAt = new Date().toISOString();
-        localStorage.setItem(PREFIX + exam.id, JSON.stringify(exam));
-        var index = getExamIndex();
-        var found = false;
-        for (var i = 0; i < index.length; i++) {
-            if (index[i].id === exam.id) {
-                index[i].name = exam.name;
-                index[i].date = exam.date;
-                index[i].examineeCount = Object.keys(exam.examinees || {}).length;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            index.push({
-                id: exam.id,
-                name: exam.name,
-                date: exam.date,
-                createdAt: exam.createdAt,
-                examineeCount: Object.keys(exam.examinees || {}).length
-            });
-        }
-        saveExamIndex(index);
-    }
+        // Load grades subcollection
+        var gradesSnap = await App.db.collection('exams').doc(examId)
+            .collection('grades').get();
+        exam.allGrades = {};
+        gradesSnap.docs.forEach(function (d) {
+            // Doc ID format: examineeId__trainerId
+            var parts = d.id.split('__');
+            var examineeId = parts[0];
+            var trainerId = parts[1];
+            if (!exam.allGrades[examineeId]) exam.allGrades[examineeId] = {};
+            exam.allGrades[examineeId][trainerId] = Object.assign({ trainerId: trainerId }, d.data());
+        });
 
-    function deleteExam(examId) {
-        localStorage.removeItem(PREFIX + examId);
-        var index = getExamIndex().filter(function (e) { return e.id !== examId; });
-        saveExamIndex(index);
-    }
-
-    function createExam(name, date) {
-        var id = App.Utils.generateId('exam');
-        var exam = {
-            id: id,
-            name: name,
-            date: date,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            examinees: {},
-            grades: {}
-        };
-        saveExam(exam);
         return exam;
     }
 
-    function addExaminee(examId, firstName, lastName, rank) {
-        var exam = getExam(examId);
-        if (!exam) return null;
-        var examineeId = App.Utils.generateId('examinee');
-        var order = Object.keys(exam.examinees).length;
-        exam.examinees[examineeId] = {
-            id: examineeId,
+    async function createExam(name, date) {
+        var userId = App.Auth.getUserId();
+        var userName = App.Auth.getUserName();
+        var docRef = await App.db.collection('exams').add({
+            name: name,
+            date: date,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            ownerId: userId,
+            trainerIds: [userId],
+            trainerNames: {},
+            invitationCode: '',
+            examineeCount: 0
+        });
+        // Store trainer name mapping
+        var nameUpdate = {};
+        nameUpdate['trainerNames.' + userId] = userName;
+        await docRef.update(nameUpdate);
+        return { id: docRef.id, name: name, date: date };
+    }
+
+    async function deleteExam(examId) {
+        // Delete subcollections first
+        var examineesSnap = await App.db.collection('exams').doc(examId).collection('examinees').get();
+        var gradesSnap = await App.db.collection('exams').doc(examId).collection('grades').get();
+        var batch = App.db.batch();
+        examineesSnap.docs.forEach(function (d) { batch.delete(d.ref); });
+        gradesSnap.docs.forEach(function (d) { batch.delete(d.ref); });
+        await batch.commit();
+        await App.db.collection('exams').doc(examId).delete();
+    }
+
+    async function addExaminee(examId, firstName, lastName, rank) {
+        var examRef = App.db.collection('exams').doc(examId);
+        var examineeRef = examRef.collection('examinees').doc();
+        var examDoc = await examRef.get();
+        var currentCount = (examDoc.data().examineeCount || 0);
+
+        await examineeRef.set({
             firstName: firstName,
             lastName: lastName,
             dateOfBirth: '',
@@ -99,41 +115,173 @@ App.Storage = (function () {
             trainingStartDate: '',
             lastExamDate: '',
             trainingsPerWeek: '',
-            photo: '',
-            order: order
+            photoUrl: '',
+            order: currentCount,
+            addedBy: 'trainer:' + App.Auth.getUserId(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await examRef.update({
+            examineeCount: firebase.firestore.FieldValue.increment(1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        return examineeRef.id;
+    }
+
+    async function removeExaminee(examId, examineeId) {
+        // Delete examinee doc
+        await App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId).delete();
+
+        // Delete all grade docs for this examinee
+        var gradesSnap = await App.db.collection('exams').doc(examId)
+            .collection('grades')
+            .where(firebase.firestore.FieldPath.documentId(), '>=', examineeId + '__')
+            .where(firebase.firestore.FieldPath.documentId(), '<=', examineeId + '__\uf8ff')
+            .get();
+        var batch = App.db.batch();
+        gradesSnap.docs.forEach(function (d) { batch.delete(d.ref); });
+        await batch.commit();
+
+        await App.db.collection('exams').doc(examId).update({
+            examineeCount: firebase.firestore.FieldValue.increment(-1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
+    async function updateExaminee(examId, examineeId, data) {
+        // Remove undefined fields
+        var cleanData = {};
+        Object.keys(data).forEach(function (k) {
+            if (data[k] !== undefined) cleanData[k] = data[k];
+        });
+        await App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId).update(cleanData);
+    }
+
+    async function updateGrade(examId, examineeId, categoryKey, value) {
+        var trainerId = App.Auth.getUserId();
+        var trainerName = App.Auth.getUserName();
+        var gradeDocId = examineeId + '__' + trainerId;
+        var gradeRef = App.db.collection('exams').doc(examId)
+            .collection('grades').doc(gradeDocId);
+
+        var updateData = {
+            trainerId: trainerId,
+            trainerName: trainerName,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        exam.grades[examineeId] = App.Utils.getEmptyGrades();
-        saveExam(exam);
-        return examineeId;
+        updateData[categoryKey] = value;
+
+        await gradeRef.set(updateData, { merge: true });
     }
 
-    function removeExaminee(examId, examineeId) {
-        var exam = getExam(examId);
-        if (!exam) return;
-        delete exam.examinees[examineeId];
-        delete exam.grades[examineeId];
-        saveExam(exam);
+    // --- Real-time listeners ---
+
+    function subscribeToGrades(examId, callback) {
+        return App.db.collection('exams').doc(examId)
+            .collection('grades')
+            .onSnapshot(function (snapshot) {
+                var allGrades = {};
+                snapshot.docs.forEach(function (d) {
+                    var parts = d.id.split('__');
+                    var examineeId = parts[0];
+                    var trainerId = parts[1];
+                    if (!allGrades[examineeId]) allGrades[examineeId] = {};
+                    allGrades[examineeId][trainerId] = Object.assign({ trainerId: trainerId }, d.data());
+                });
+                callback(allGrades);
+            });
     }
 
-    function updateExaminee(examId, examineeId, data) {
-        var exam = getExam(examId);
-        if (!exam || !exam.examinees[examineeId]) return;
-        Object.assign(exam.examinees[examineeId], data);
-        saveExam(exam);
+    function subscribeToExaminees(examId, callback) {
+        return App.db.collection('exams').doc(examId)
+            .collection('examinees').orderBy('order')
+            .onSnapshot(function (snapshot) {
+                var examinees = {};
+                snapshot.docs.forEach(function (d) {
+                    examinees[d.id] = Object.assign({ id: d.id }, d.data());
+                });
+                callback(examinees);
+            });
     }
 
-    function updateGrade(examId, examineeId, categoryKey, value) {
-        var exam = getExam(examId);
-        if (!exam) return;
-        if (!exam.grades[examineeId]) {
-            exam.grades[examineeId] = App.Utils.getEmptyGrades();
+    // --- Trainer management ---
+
+    async function addTrainerByEmail(examId, email) {
+        var usersSnap = await App.db.collection('users')
+            .where('email', '==', email).limit(1).get();
+        if (usersSnap.empty) return { error: 'not_found' };
+
+        var trainerDoc = usersSnap.docs[0];
+        var trainerId = trainerDoc.id;
+        var trainerName = trainerDoc.data().displayName || email;
+
+        var updateData = {
+            trainerIds: firebase.firestore.FieldValue.arrayUnion(trainerId),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        updateData['trainerNames.' + trainerId] = trainerName;
+
+        await App.db.collection('exams').doc(examId).update(updateData);
+        return { success: true, trainerId: trainerId, trainerName: trainerName };
+    }
+
+    // --- Invitation ---
+
+    async function generateInvitationCode(examId) {
+        var code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        await App.db.collection('exams').doc(examId).update({
+            invitationCode: code
+        });
+        return code;
+    }
+
+    async function verifyInvitationCode(examId, code) {
+        var doc = await App.db.collection('exams').doc(examId).get();
+        if (!doc.exists) return null;
+        var exam = doc.data();
+        if (exam.invitationCode && exam.invitationCode === code.toUpperCase()) {
+            return { id: doc.id, name: exam.name, date: exam.date };
         }
-        exam.grades[examineeId][categoryKey] = value;
-        saveExam(exam);
+        return null;
     }
 
-    function exportExam(examId) {
-        var exam = getExam(examId);
+    async function selfRegisterExaminee(examId, data, invitationCode) {
+        var examRef = App.db.collection('exams').doc(examId);
+        var examineeRef = examRef.collection('examinees').doc();
+        var examDoc = await examRef.get();
+        var currentCount = (examDoc.data().examineeCount || 0);
+
+        await examineeRef.set({
+            firstName: data.firstName,
+            lastName: data.lastName,
+            dateOfBirth: data.dateOfBirth || '',
+            rank: data.rank || '',
+            club: data.club || '',
+            trainingStartDate: data.trainingStartDate || '',
+            lastExamDate: data.lastExamDate || '',
+            trainingsPerWeek: data.trainingsPerWeek || '',
+            photoUrl: data.photoUrl || '',
+            order: currentCount,
+            addedBy: 'self-registration',
+            invitationCode: invitationCode,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await examRef.update({
+            examineeCount: firebase.firestore.FieldValue.increment(1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        return examineeRef.id;
+    }
+
+    // --- Export/Import ---
+
+    async function exportExam(examId) {
+        var exam = await getExam(examId);
         if (!exam) return;
         var json = JSON.stringify(exam, null, 2);
         var blob = new Blob([json], { type: 'application/json' });
@@ -147,39 +295,75 @@ App.Storage = (function () {
         URL.revokeObjectURL(url);
     }
 
-    function exportAllExams() {
-        var index = getExamIndex();
-        var allData = { exams: [] };
-        index.forEach(function (entry) {
-            var exam = getExam(entry.id);
-            if (exam) allData.exams.push(exam);
-        });
-        var json = JSON.stringify(allData, null, 2);
-        var blob = new Blob([json], { type: 'application/json' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'karate_exams_backup.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    function importExam(file, callback) {
+    async function importExam(file, callback) {
         var reader = new FileReader();
-        reader.onload = function (e) {
+        reader.onload = async function (e) {
             try {
                 var data = JSON.parse(e.target.result);
-                if (data.exams && Array.isArray(data.exams)) {
-                    data.exams.forEach(function (exam) {
-                        exam.id = App.Utils.generateId('exam');
-                        saveExam(exam);
-                    });
-                } else if (data.id && data.examinees !== undefined) {
-                    data.id = App.Utils.generateId('exam');
-                    saveExam(data);
+                var userId = App.Auth.getUserId();
+                var userName = App.Auth.getUserName();
+
+                // Create exam doc
+                var examData = {
+                    name: data.name || 'Imported Exam',
+                    date: data.date || '',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    ownerId: userId,
+                    trainerIds: [userId],
+                    trainerNames: {},
+                    invitationCode: '',
+                    examineeCount: 0
+                };
+                examData.trainerNames[userId] = userName;
+
+                var examRef = await App.db.collection('exams').add(examData);
+
+                // Import examinees
+                if (data.examinees) {
+                    var examinees = typeof data.examinees === 'object' ? Object.values(data.examinees) : [];
+                    for (var i = 0; i < examinees.length; i++) {
+                        var ex = examinees[i];
+                        var exRef = examRef.collection('examinees').doc();
+                        await exRef.set({
+                            firstName: ex.firstName || '',
+                            lastName: ex.lastName || '',
+                            dateOfBirth: ex.dateOfBirth || '',
+                            rank: ex.rank || '',
+                            club: ex.club || '',
+                            trainingStartDate: ex.trainingStartDate || '',
+                            lastExamDate: ex.lastExamDate || '',
+                            trainingsPerWeek: ex.trainingsPerWeek || '',
+                            photoUrl: ex.photoUrl || ex.photo || '',
+                            order: i,
+                            addedBy: 'import',
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+
+                        // Import grades for this examinee (old format: grades[oldId])
+                        var oldId = ex.id || Object.keys(data.examinees)[i];
+                        if (data.grades && data.grades[oldId]) {
+                            var gradeDocId = exRef.id + '__' + userId;
+                            var gradeData = Object.assign({}, data.grades[oldId], {
+                                trainerId: userId,
+                                trainerName: userName,
+                                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                            await examRef.collection('grades').doc(gradeDocId).set(gradeData);
+                        }
+                        // New format: allGrades
+                        if (data.allGrades && data.allGrades[oldId]) {
+                            var trainers = Object.keys(data.allGrades[oldId]);
+                            for (var j = 0; j < trainers.length; j++) {
+                                var tid = trainers[j];
+                                var gDocId = exRef.id + '__' + tid;
+                                await examRef.collection('grades').doc(gDocId).set(data.allGrades[oldId][tid]);
+                            }
+                        }
+                    }
+                    await examRef.update({ examineeCount: examinees.length });
                 }
+
                 if (callback) callback(null);
             } catch (err) {
                 if (callback) callback(err);
@@ -193,15 +377,19 @@ App.Storage = (function () {
         saveSettings: saveSettings,
         getExamIndex: getExamIndex,
         getExam: getExam,
-        saveExam: saveExam,
-        deleteExam: deleteExam,
         createExam: createExam,
+        deleteExam: deleteExam,
         addExaminee: addExaminee,
         removeExaminee: removeExaminee,
         updateExaminee: updateExaminee,
         updateGrade: updateGrade,
+        subscribeToGrades: subscribeToGrades,
+        subscribeToExaminees: subscribeToExaminees,
+        addTrainerByEmail: addTrainerByEmail,
+        generateInvitationCode: generateInvitationCode,
+        verifyInvitationCode: verifyInvitationCode,
+        selfRegisterExaminee: selfRegisterExaminee,
         exportExam: exportExam,
-        exportAllExams: exportAllExams,
         importExam: importExam
     };
 })();
