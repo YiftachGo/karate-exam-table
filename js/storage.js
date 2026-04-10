@@ -221,22 +221,27 @@ App.Storage = (function () {
     // --- Trainer management ---
 
     async function addTrainerByEmail(examId, email) {
-        var usersSnap = await App.db.collection('users')
-            .where('email', '==', email).limit(1).get();
-        if (usersSnap.empty) return { error: 'not_found' };
+        try {
+            var usersSnap = await App.db.collection('users')
+                .where('email', '==', email).limit(1).get();
+            if (usersSnap.empty) return { error: 'not_found' };
 
-        var trainerDoc = usersSnap.docs[0];
-        var trainerId = trainerDoc.id;
-        var trainerName = trainerDoc.data().displayName || email;
+            var trainerDoc = usersSnap.docs[0];
+            var trainerId = trainerDoc.id;
+            var trainerName = trainerDoc.data().displayName || email;
 
-        var updateData = {
-            trainerIds: firebase.firestore.FieldValue.arrayUnion(trainerId),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        updateData['trainerNames.' + trainerId] = trainerName;
+            var updateData = {
+                trainerIds: firebase.firestore.FieldValue.arrayUnion(trainerId),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            updateData['trainerNames.' + trainerId] = trainerName;
 
-        await App.db.collection('exams').doc(examId).update(updateData);
-        return { success: true, trainerId: trainerId, trainerName: trainerName };
+            await App.db.collection('exams').doc(examId).update(updateData);
+            return { success: true, trainerId: trainerId, trainerName: trainerName };
+        } catch (err) {
+            console.error('addTrainerByEmail error:', err);
+            return { error: 'permission_denied' };
+        }
     }
 
     // --- Invitation ---
