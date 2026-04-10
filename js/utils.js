@@ -55,8 +55,11 @@ App.Utils = (function () {
         { key: 'kata', he: 'קאטה', en: 'Kata' },
         { key: 'sanchin', he: 'סנצ\'ין', en: 'Sanchin' },
         { key: 'general_notes', he: 'הערות כלליות', en: 'General Notes' },
-        { key: 'recommendations', he: 'המלצות', en: 'Recommendations' }
+        { key: 'recommendations', he: 'המלצות', en: 'Recommendations' },
+        { key: 'rank_approval', he: 'אישור דרגה', en: 'Rank Approval', type: 'passfail' }
     ];
+
+    var DEFAULT_CATEGORY_ORDER = CATEGORIES.map(function (c) { return c.key; });
 
     function getEmptyGrades() {
         var grades = {};
@@ -66,6 +69,21 @@ App.Utils = (function () {
         return grades;
     }
 
+    function getCategoriesOrdered(orderArray) {
+        if (!orderArray || !orderArray.length) return CATEGORIES;
+        var catMap = {};
+        CATEGORIES.forEach(function (c) { catMap[c.key] = c; });
+        var ordered = [];
+        orderArray.forEach(function (key) {
+            if (catMap[key]) ordered.push(catMap[key]);
+        });
+        // Add any missing categories at the end
+        CATEGORIES.forEach(function (c) {
+            if (orderArray.indexOf(c.key) === -1) ordered.push(c);
+        });
+        return ordered;
+    }
+
     return {
         generateId: generateId,
         calculateAge: calculateAge,
@@ -73,6 +91,8 @@ App.Utils = (function () {
         debounce: debounce,
         escapeHtml: escapeHtml,
         CATEGORIES: CATEGORIES,
+        DEFAULT_CATEGORY_ORDER: DEFAULT_CATEGORY_ORDER,
+        getCategoriesOrdered: getCategoriesOrdered,
         getEmptyGrades: getEmptyGrades
     };
 })();

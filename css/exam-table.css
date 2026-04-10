@@ -172,6 +172,157 @@ thead .sticky-col {
     background: #e8eaf0;
 }
 
+/* Drag handles */
+.drag-handle,
+.drag-handle-row {
+    cursor: grab;
+    opacity: 0.4;
+    font-size: 0.75rem;
+    letter-spacing: -2px;
+    user-select: none;
+    display: inline-block;
+    vertical-align: middle;
+    transition: opacity var(--transition);
+}
+
+.drag-handle {
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 2px;
+}
+
+.drag-handle-row {
+    color: var(--primary);
+    margin-inline-end: 4px;
+}
+
+.drag-handle:hover,
+.drag-handle-row:hover {
+    opacity: 1;
+}
+
+/* Dragging states */
+.dragging {
+    opacity: 0.4;
+}
+
+.drag-over {
+    outline: 2px dashed var(--primary-light);
+    outline-offset: -2px;
+    background: rgba(57, 73, 171, 0.08) !important;
+}
+
+/* Examinee header actions */
+.examinee-header-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+
+.examinee-header:hover .examinee-header-actions {
+    opacity: 1;
+}
+
+.export-rec-btn {
+    font-size: 0.7rem;
+    padding: 2px 5px;
+    color: white;
+    border-color: rgba(255,255,255,0.5);
+}
+
+.export-rec-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+/* Pass/Fail */
+.passfail-selector {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.pf-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all var(--transition);
+    font-family: inherit;
+}
+
+.pf-pass {
+    color: #2e7d32;
+    border-color: #a5d6a7;
+}
+
+.pf-pass:hover {
+    background: #e8f5e9;
+}
+
+.pf-pass.active {
+    background: #2e7d32;
+    color: white;
+    border-color: #2e7d32;
+}
+
+.pf-fail {
+    color: #c62828;
+    border-color: #ef9a9a;
+}
+
+.pf-fail:hover {
+    background: #ffebee;
+}
+
+.pf-fail.active {
+    background: #c62828;
+    color: white;
+    border-color: #c62828;
+}
+
+.pass-badge {
+    color: #2e7d32;
+    font-weight: 700;
+    background: #e8f5e9;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+}
+
+.fail-badge {
+    color: #c62828;
+    font-weight: 700;
+    background: #ffebee;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+}
+
+/* Other trainer notes */
+.other-trainer-note {
+    font-size: 0.8rem;
+    padding: 4px 6px;
+    margin-bottom: 4px;
+    background: #f0f0f5;
+    border-radius: var(--radius-sm);
+    border-inline-start: 3px solid var(--primary-light);
+}
+
+.trainer-label {
+    font-weight: 600;
+    color: var(--primary);
+    margin-inline-end: 4px;
+}
+
+.trainer-text {
+    color: var(--text-secondary);
+}
+
 @media print {
     .table-wrapper {
         overflow: visible;
@@ -187,7 +338,11 @@ thead .sticky-col {
         min-height: auto;
         resize: none;
     }
-    .remove-examinee-btn {
+    .remove-examinee-btn,
+    .export-rec-btn,
+    .drag-handle,
+    .drag-handle-row,
+    .examinee-header-actions {
         display: none !important;
     }
 }

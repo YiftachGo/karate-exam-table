@@ -64,6 +64,23 @@ App.ExamineeDetail = (function () {
 
         html += formGroup('trainingsPerWeek', t('trainingsPerWeek'), 'number', ex.trainingsPerWeek);
 
+        // Prerequisites section
+        html += '<div class="prerequisites-section">';
+        html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
+        html += formGroup('beltTrainings', t('beltTrainings'), 'number', ex.beltTrainings);
+        html += formGroup('gasshukuCount', t('gasshukuCount'), 'number', ex.gasshukuCount);
+
+        html += '<div class="form-group">';
+        html += '<label>' + t('examPayment') + '</label>';
+        html += '<select id="field-examPayment">';
+        html += '<option value="">' + t('selectStatus') + '</option>';
+        html += '<option value="paid"' + (ex.examPayment === 'paid' ? ' selected' : '') + '>' + t('paid') + '</option>';
+        html += '<option value="unpaid"' + (ex.examPayment === 'unpaid' ? ' selected' : '') + '>' + t('unpaid') + '</option>';
+        html += '<option value="exempt"' + (ex.examPayment === 'exempt' ? ' selected' : '') + '>' + t('exempt') + '</option>';
+        html += '</select>';
+        html += '</div>';
+        html += '</div>';
+
         html += '<div class="form-actions">';
         html += '<button class="btn btn-primary" id="btn-save-examinee">' + t('save') + '</button>';
         html += '</div>';
@@ -140,7 +157,10 @@ App.ExamineeDetail = (function () {
             club: document.getElementById('field-club').value.trim(),
             trainingStartDate: document.getElementById('field-trainingStartDate').value,
             lastExamDate: document.getElementById('field-lastExamDate').value,
-            trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value
+            trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value,
+            beltTrainings: document.getElementById('field-beltTrainings').value,
+            gasshukuCount: document.getElementById('field-gasshukuCount').value,
+            examPayment: document.getElementById('field-examPayment').value
         };
         await App.Storage.updateExaminee(examId, examineeId, data);
         App.showToast(App.I18n.t('dataSaved'));

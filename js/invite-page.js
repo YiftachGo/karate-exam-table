@@ -104,6 +104,13 @@ App.InvitePage = (function () {
 
         html += regField('trainingsPerWeek', t('trainingsPerWeek'), 'number', false);
 
+        // Prerequisites
+        html += '<div class="prerequisites-section">';
+        html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
+        html += regField('beltTrainings', t('beltTrainings'), 'number', false);
+        html += regField('gasshukuCount', t('gasshukuCount'), 'number', false);
+        html += '</div>';
+
         html += '<div id="reg-error" class="auth-error" style="display:none"></div>';
 
         html += '<div class="form-actions">';
@@ -153,6 +160,8 @@ App.InvitePage = (function () {
                     trainingStartDate: document.getElementById('reg-trainingStartDate').value,
                     lastExamDate: document.getElementById('reg-lastExamDate').value,
                     trainingsPerWeek: document.getElementById('reg-trainingsPerWeek').value,
+                    beltTrainings: document.getElementById('reg-beltTrainings').value,
+                    gasshukuCount: document.getElementById('reg-gasshukuCount').value,
                     photoUrl: ''
                 };
 

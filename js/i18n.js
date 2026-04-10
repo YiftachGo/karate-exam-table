@@ -83,7 +83,25 @@ App.I18n = (function () {
             registrationSuccess: 'נרשמת בהצלחה! בהצלחה במבחן.',
             thankYou: 'תודה!',
             loading: 'טוען...',
-            error: 'שגיאה'
+            error: 'שגיאה',
+            // Drag & Drop
+            dragToReorder: 'גרור לשינוי סדר',
+            // Pass/Fail
+            pass: 'עבר',
+            fail: 'לא עבר',
+            // Recommendation Export
+            exportRecommendation: 'ייצוא דף המלצות',
+            examNotes: 'הערות מבחן',
+            generatedOn: 'הופק בתאריך',
+            // Prerequisites
+            prerequisites: 'דרישות קדם',
+            beltTrainings: 'אימוני שחורות',
+            gasshukuCount: 'גשוקואים',
+            examPayment: 'תשלום מבחן',
+            selectStatus: 'בחר סטטוס',
+            paid: 'שולם',
+            unpaid: 'לא שולם',
+            exempt: 'פטור'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -166,7 +184,25 @@ App.I18n = (function () {
             registrationSuccess: 'Registration successful! Good luck on the exam.',
             thankYou: 'Thank You!',
             loading: 'Loading...',
-            error: 'Error'
+            error: 'Error',
+            // Drag & Drop
+            dragToReorder: 'Drag to reorder',
+            // Pass/Fail
+            pass: 'Pass',
+            fail: 'Fail',
+            // Recommendation Export
+            exportRecommendation: 'Export Recommendation',
+            examNotes: 'Exam Notes',
+            generatedOn: 'Generated on',
+            // Prerequisites
+            prerequisites: 'Prerequisites',
+            beltTrainings: 'Belt Trainings',
+            gasshukuCount: 'Gasshuku Attended',
+            examPayment: 'Exam Payment',
+            selectStatus: 'Select status',
+            paid: 'Paid',
+            unpaid: 'Unpaid',
+            exempt: 'Exempt'
         }
     };
 
