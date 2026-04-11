@@ -88,6 +88,7 @@ thead .sticky-col {
     align-items: center;
     gap: 4px;
     position: relative;
+    width: 100%;
 }
 
 .examinee-thumb {
