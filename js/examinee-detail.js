@@ -55,7 +55,7 @@ App.ExamineeDetail = (function () {
         html += '</div>';
 
         html += formGroup('rank', t('rank'), 'text', ex.rank);
-        html += formGroup('club', t('club'), 'text', ex.club);
+        html += clubSelectGroup(t('club'), ex.club || '');
 
         html += '<div class="form-row">';
         html += formGroup('trainingStartDate', t('trainingStartDate'), 'date', ex.trainingStartDate);
@@ -91,6 +91,31 @@ App.ExamineeDetail = (function () {
 
         container.innerHTML = html;
         bindEvents(examId, examineeId);
+    }
+
+    var CLUBS = [
+        { value: 'הונבו דוג\'ו - נתניה', display: 'הונבו דוג\'ו - נתניה (סנסיי אריאל בן סימון, בועז היליג, מישל יוסבשוילי)' },
+        { value: 'דוג\'ו אבן יהודה', display: 'דוג\'ו אבן יהודה (סנסיי יואל שחר, יוסף אילוז)' },
+        { value: 'דוג\'ו באר שבע', display: 'דוג\'ו באר שבע (סנסיי יפתח גוברין)' },
+        { value: 'דוג\'ו עמק חפר', display: 'דוג\'ו עמק חפר (סנסיי עמוס דניאלי)' },
+        { value: 'דוג\'ו עתלית', display: 'דוג\'ו עתלית (סנסיי קאטי פרש)' },
+        { value: 'דוג\'ו פרדסיה', display: 'דוג\'ו פרדסיה (סנסיי אופיר הורביץ)' },
+        { value: 'דוג\'ו קרית השרון', display: 'דוג\'ו קרית השרון (סנסיי בועז הייליג)' },
+        { value: 'דוג\'ו תל אביב', display: 'דוג\'ו תל אביב (סנסיי יפתח גוברין)' }
+    ];
+
+    function clubSelectGroup(label, currentVal) {
+        var html = '<div class="form-group">';
+        html += '<label for="field-club">' + label + '</label>';
+        html += '<select id="field-club">';
+        html += '<option value=""></option>';
+        CLUBS.forEach(function (club) {
+            var selected = currentVal === club.value ? ' selected' : '';
+            html += '<option value="' + App.Utils.escapeHtml(club.value) + '"' + selected + '>' + App.Utils.escapeHtml(club.display) + '</option>';
+        });
+        html += '</select>';
+        html += '</div>';
+        return html;
     }
 
     function formGroup(fieldName, label, type, value) {

@@ -95,7 +95,7 @@ App.InvitePage = (function () {
         html += regField('rank', t('rank'), 'text', false);
         html += '</div>';
 
-        html += regField('club', t('club'), 'text', false);
+        html += regClubSelect(t('club'));
 
         html += '<div class="form-row">';
         html += regField('trainingStartDate', t('trainingStartDate'), 'date', false);
@@ -182,6 +182,30 @@ App.InvitePage = (function () {
                 errorEl.style.display = '';
             }
         });
+    }
+
+    var CLUBS = [
+        { value: 'הונבו דוג\'ו - נתניה', display: 'הונבו דוג\'ו - נתניה (סנסיי אריאל בן סימון, בועז היליג, מישל יוסבשוילי)' },
+        { value: 'דוג\'ו אבן יהודה', display: 'דוג\'ו אבן יהודה (סנסיי יואל שחר, יוסף אילוז)' },
+        { value: 'דוג\'ו באר שבע', display: 'דוג\'ו באר שבע (סנסיי יפתח גוברין)' },
+        { value: 'דוג\'ו עמק חפר', display: 'דוג\'ו עמק חפר (סנסיי עמוס דניאלי)' },
+        { value: 'דוג\'ו עתלית', display: 'דוג\'ו עתלית (סנסיי קאטי פרש)' },
+        { value: 'דוג\'ו פרדסיה', display: 'דוג\'ו פרדסיה (סנסיי אופיר הורביץ)' },
+        { value: 'דוג\'ו קרית השרון', display: 'דוג\'ו קרית השרון (סנסיי בועז הייליג)' },
+        { value: 'דוג\'ו תל אביב', display: 'דוג\'ו תל אביב (סנסיי יפתח גוברין)' }
+    ];
+
+    function regClubSelect(label) {
+        var html = '<div class="form-group">';
+        html += '<label>' + label + '</label>';
+        html += '<select id="reg-club">';
+        html += '<option value=""></option>';
+        CLUBS.forEach(function (club) {
+            html += '<option value="' + App.Utils.escapeHtml(club.value) + '">' + App.Utils.escapeHtml(club.display) + '</option>';
+        });
+        html += '</select>';
+        html += '</div>';
+        return html;
     }
 
     function regField(name, label, type, required) {
