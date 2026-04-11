@@ -214,7 +214,7 @@ thead .sticky-col {
 /* Export recommendation button — positioned at start (left in RTL) */
 .export-rec-btn {
     position: absolute;
-    left: 2px;
+    right: 2px;
     top: 2px;
     font-size: 0.75rem;
     padding: 2px 4px;
@@ -228,8 +228,8 @@ thead .sticky-col {
 }
 
 [dir="ltr"] .export-rec-btn {
-    left: auto;
-    right: 2px;
+    right: auto;
+    left: 2px;
 }
 
 .examinee-header:hover .export-rec-btn {
