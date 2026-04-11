@@ -89,6 +89,8 @@ App.I18n = (function () {
             // Pass/Fail
             pass: 'עבר',
             fail: 'לא עבר',
+            conditionalPass: 'מעבר בתנאי',
+            enterCondition: 'הכנס תנאי...',
             // Recommendation Export
             exportRecommendation: 'ייצוא דף המלצות',
             examNotes: 'הערות מבחן',
@@ -190,6 +192,8 @@ App.I18n = (function () {
             // Pass/Fail
             pass: 'Pass',
             fail: 'Fail',
+            conditionalPass: 'Conditional Pass',
+            enterCondition: 'Enter condition...',
             // Recommendation Export
             exportRecommendation: 'Export Recommendation',
             examNotes: 'Exam Notes',

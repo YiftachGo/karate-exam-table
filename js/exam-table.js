@@ -92,6 +92,7 @@ App.ExamTable = (function () {
             examinees.forEach(function (ex, idx) {
                 html += '<th class="examinee-header" data-id="' + ex.id + '" data-order="' + idx + '" draggable="true">';
                 html += '<div class="examinee-header-content">';
+                html += '<button class="btn btn-sm export-rec-btn" data-id="' + ex.id + '" title="' + t('exportRecommendation') + '">&#128196;</button>';
                 html += '<div class="drag-handle" title="' + t('dragToReorder') + '">&#8942;&#8942;</div>';
                 if (ex.photoUrl) {
                     html += '<img src="' + ex.photoUrl + '" class="examinee-thumb" alt="">';
@@ -102,10 +103,7 @@ App.ExamTable = (function () {
                 if (ex.rank) {
                     html += '<span class="examinee-rank">' + App.Utils.escapeHtml(ex.rank) + '</span>';
                 }
-                html += '<div class="examinee-header-actions">';
-                html += '<button class="btn btn-sm btn-outline export-rec-btn" data-id="' + ex.id + '" title="' + t('exportRecommendation') + '">&#128196;</button>';
                 html += '<button class="btn btn-sm btn-danger remove-examinee-btn" data-id="' + ex.id + '" title="' + t('removeExaminee') + '">&#10005;</button>';
-                html += '</div>';
                 html += '</div>';
                 html += '</th>';
             });
@@ -179,11 +177,22 @@ App.ExamTable = (function () {
             var val = tGrades ? (tGrades[catKey] || '') : '';
             if (val) {
                 var name = (tGrades && tGrades.trainerName) || trainerNames[tid] || tid.slice(0, 6);
-                var cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
-                var label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
+                var isConditional = val.indexOf('conditional:') === 0;
+                var cls, label;
+                if (isConditional) {
+                    cls = 'conditional-badge';
+                    label = t('conditionalPass');
+                } else {
+                    cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
+                    label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
+                }
                 html += '<div class="other-trainer-note">';
                 html += '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span>';
                 html += '<span class="' + cls + '">' + label + '</span>';
+                if (isConditional) {
+                    var cond = val.substring(12);
+                    if (cond) html += '<div class="condition-text">' + App.Utils.escapeHtml(cond) + '</div>';
+                }
                 html += '</div>';
             }
         });
@@ -191,10 +200,14 @@ App.ExamTable = (function () {
         // Current user's selection
         var myGrades = exGrades[currentUserId];
         var myVal = myGrades ? (myGrades[catKey] || '') : '';
+        var isMyConditional = myVal.indexOf('conditional:') === 0;
+        var myConditionText = isMyConditional ? myVal.substring(12) : '';
         html += '<div class="passfail-selector" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
         html += '<button class="pf-btn pf-pass' + (myVal === 'pass' ? ' active' : '') + '" data-value="pass">' + t('pass') + '</button>';
         html += '<button class="pf-btn pf-fail' + (myVal === 'fail' ? ' active' : '') + '" data-value="fail">' + t('fail') + '</button>';
+        html += '<button class="pf-btn pf-conditional' + (isMyConditional ? ' active' : '') + '" data-value="conditional">' + t('conditionalPass') + '</button>';
         html += '</div>';
+        html += '<textarea class="condition-input' + (isMyConditional ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterCondition') + '">' + App.Utils.escapeHtml(myConditionText) + '</textarea>';
 
         return html;
     }
@@ -225,9 +238,20 @@ App.ExamTable = (function () {
                     var noteDiv = document.createElement('div');
                     noteDiv.className = 'other-trainer-note';
                     if (catKey === 'rank_approval') {
-                        var cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
-                        var label = val === 'pass' ? App.I18n.t('pass') : val === 'fail' ? App.I18n.t('fail') : val;
+                        var isConditional = val.indexOf('conditional:') === 0;
+                        var cls, label;
+                        if (isConditional) {
+                            cls = 'conditional-badge';
+                            label = App.I18n.t('conditionalPass');
+                        } else {
+                            cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
+                            label = val === 'pass' ? App.I18n.t('pass') : val === 'fail' ? App.I18n.t('fail') : val;
+                        }
                         noteDiv.innerHTML = '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span><span class="' + cls + '">' + label + '</span>';
+                        if (isConditional) {
+                            var cond = val.substring(12);
+                            if (cond) noteDiv.innerHTML += '<div class="condition-text">' + App.Utils.escapeHtml(cond) + '</div>';
+                        }
                     } else {
                         noteDiv.innerHTML = '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span><span class="trainer-text">' + App.Utils.escapeHtml(val) + '</span>';
                     }
@@ -388,7 +412,7 @@ App.ExamTable = (function () {
         html += '.cat-name { font-weight: 700; color: #1a237e; margin-bottom: 6px; }';
         html += '.trainer-note { margin: 4px 0; padding: 4px 8px; background: #f0f0f5; border-radius: 4px; font-size: 0.9rem; }';
         html += '.trainer-name { font-weight: 600; color: #3949ab; }';
-        html += '.pass-badge { color: #2e7d32; font-weight: 700; } .fail-badge { color: #c62828; font-weight: 700; }';
+        html += '.pass-badge { color: #2e7d32; font-weight: 700; } .fail-badge { color: #c62828; font-weight: 700; } .conditional-badge { color: #e65100; font-weight: 700; }';
         html += '.footer { margin-top: 32px; text-align: center; color: #757575; font-size: 0.8rem; }';
         html += '@media print { body { padding: 0; } }';
         html += '</style></head><body>';
@@ -416,20 +440,30 @@ App.ExamTable = (function () {
             var hasContent = false;
             var catHtml = '<div class="category"><div class="cat-name">' + cat[lang] + '</div>';
 
-            // All trainers' notes
+            // All trainers' notes (anonymous — no trainer names)
             var allTrainerIds = exam.trainerIds || [];
             allTrainerIds.forEach(function (tid) {
                 var tGrades = exGrades[tid];
                 var val = tGrades ? (tGrades[cat.key] || '') : '';
                 if (val) {
                     hasContent = true;
-                    var name = (tGrades && tGrades.trainerName) || trainerNames[tid] || '';
                     if (cat.type === 'passfail') {
-                        var label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
-                        var cls = val === 'pass' ? 'pass-badge' : 'fail-badge';
-                        catHtml += '<div class="trainer-note"><span class="trainer-name">' + App.Utils.escapeHtml(name) + ':</span> <span class="' + cls + '">' + label + '</span></div>';
+                        var isConditional = val.indexOf('conditional:') === 0;
+                        var label, cls;
+                        if (isConditional) {
+                            label = t('conditionalPass');
+                            cls = 'conditional-badge';
+                            var condition = val.substring(12);
+                            catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span>';
+                            if (condition) catHtml += ' — ' + App.Utils.escapeHtml(condition);
+                            catHtml += '</div>';
+                        } else {
+                            label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
+                            cls = val === 'pass' ? 'pass-badge' : 'fail-badge';
+                            catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span></div>';
+                        }
                     } else {
-                        catHtml += '<div class="trainer-note"><span class="trainer-name">' + App.Utils.escapeHtml(name) + ':</span> ' + App.Utils.escapeHtml(val) + '</div>';
+                        catHtml += '<div class="trainer-note">' + App.Utils.escapeHtml(val) + '</div>';
                     }
                 }
             });
@@ -500,6 +534,7 @@ App.ExamTable = (function () {
 
         // Pass/fail buttons
         document.querySelectorAll('.passfail-selector').forEach(function (sel) {
+            var condInput = sel.parentElement.querySelector('.condition-input');
             sel.querySelectorAll('.pf-btn').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     var exId = sel.dataset.examinee;
@@ -509,13 +544,30 @@ App.ExamTable = (function () {
                     var currentActive = sel.querySelector('.pf-btn.active');
                     if (currentActive === btn) {
                         btn.classList.remove('active');
+                        if (condInput) condInput.classList.add('hidden');
                         App.Storage.updateGrade(currentExamId, exId, catKey, '');
                     } else {
                         sel.querySelectorAll('.pf-btn').forEach(function (b) { b.classList.remove('active'); });
                         btn.classList.add('active');
-                        App.Storage.updateGrade(currentExamId, exId, catKey, val);
+                        if (val === 'conditional') {
+                            if (condInput) {
+                                condInput.classList.remove('hidden');
+                                condInput.focus();
+                            }
+                            App.Storage.updateGrade(currentExamId, exId, catKey, 'conditional:' + (condInput ? condInput.value : ''));
+                        } else {
+                            if (condInput) condInput.classList.add('hidden');
+                            App.Storage.updateGrade(currentExamId, exId, catKey, val);
+                        }
                     }
                 });
+            });
+        });
+
+        // Condition text inputs
+        document.querySelectorAll('.condition-input').forEach(function (ta) {
+            ta.addEventListener('input', function () {
+                App.Storage.updateGrade(currentExamId, ta.dataset.examinee, ta.dataset.category, 'conditional:' + ta.value);
             });
         });
     }

@@ -211,28 +211,34 @@ thead .sticky-col {
     background: rgba(57, 73, 171, 0.08) !important;
 }
 
-/* Examinee header actions */
-.examinee-header-actions {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
+/* Export recommendation button — positioned at start (left in RTL) */
+.export-rec-btn {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    color: white;
+    border: none;
+    background: transparent;
+    cursor: pointer;
     opacity: 0;
     transition: opacity var(--transition);
+    z-index: 1;
 }
 
-.examinee-header:hover .examinee-header-actions {
+[dir="ltr"] .export-rec-btn {
+    left: auto;
+    right: 2px;
+}
+
+.examinee-header:hover .export-rec-btn {
     opacity: 1;
 }
 
-.export-rec-btn {
-    font-size: 0.7rem;
-    padding: 2px 5px;
-    color: white;
-    border-color: rgba(255,255,255,0.5);
-}
-
 .export-rec-btn:hover {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.25);
+    border-radius: var(--radius-sm);
 }
 
 /* Pass/Fail */
@@ -285,6 +291,52 @@ thead .sticky-col {
     border-color: #c62828;
 }
 
+.pf-conditional {
+    color: #e65100;
+    border-color: #ffcc80;
+}
+
+.pf-conditional:hover {
+    background: #fff3e0;
+}
+
+.pf-conditional.active {
+    background: #e65100;
+    color: white;
+    border-color: #e65100;
+}
+
+.condition-input {
+    width: 100%;
+    min-height: 40px;
+    margin-top: 6px;
+    border: 1px solid #ffcc80;
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    resize: vertical;
+    font-family: inherit;
+    background: #fffaf0;
+    transition: border-color var(--transition);
+}
+
+.condition-input:focus {
+    border-color: #e65100;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(230, 81, 0, 0.1);
+}
+
+.condition-input.hidden {
+    display: none;
+}
+
+.condition-text {
+    font-size: 0.78rem;
+    color: #e65100;
+    margin-top: 2px;
+    font-style: italic;
+}
+
 .pass-badge {
     color: #2e7d32;
     font-weight: 700;
@@ -298,6 +350,15 @@ thead .sticky-col {
     color: #c62828;
     font-weight: 700;
     background: #ffebee;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+}
+
+.conditional-badge {
+    color: #e65100;
+    font-weight: 700;
+    background: #fff3e0;
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.8rem;
@@ -341,8 +402,7 @@ thead .sticky-col {
     .remove-examinee-btn,
     .export-rec-btn,
     .drag-handle,
-    .drag-handle-row,
-    .examinee-header-actions {
+    .drag-handle-row {
         display: none !important;
     }
 }
