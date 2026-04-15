@@ -67,7 +67,6 @@ App.ExamineeDetail = (function () {
         // Prerequisites section
         html += '<div class="prerequisites-section">';
         html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
-        html += formGroup('beltTrainings', t('beltTrainings'), 'number', ex.beltTrainings);
         html += formGroup('gasshukuCount', t('gasshukuCount'), 'number', ex.gasshukuCount);
 
         html += '<div class="form-group">';
@@ -79,6 +78,11 @@ App.ExamineeDetail = (function () {
         html += '<option value="exempt"' + (ex.examPayment === 'exempt' ? ' selected' : '') + '>' + t('exempt') + '</option>';
         html += '</select>';
         html += '</div>';
+
+        // Shodan and above sub-section
+        html += '<div class="shodan-subsection">';
+        html += '<h4 class="subsection-title">' + t('shodanAndAbove') + '</h4>';
+        html += formGroup('beltTrainings', t('beltTrainings'), 'number', ex.beltTrainings);
 
         html += '<div class="form-group">';
         html += '<label>' + t('formSubmitted') + '</label>';
@@ -94,7 +98,8 @@ App.ExamineeDetail = (function () {
         html += '<input type="text" id="field-theoryExamGrade" value="' + App.Utils.escapeHtml(String(ex.theoryExamGrade || '')) + '">';
         html += '</div>';
 
-        html += '</div>';
+        html += '</div>'; // end shodan-subsection
+        html += '</div>'; // end prerequisites-section
 
         html += '<div class="form-actions">';
         html += '<button class="btn btn-primary" id="btn-save-examinee">' + t('save') + '</button>';

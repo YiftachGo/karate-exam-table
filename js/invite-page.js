@@ -107,8 +107,11 @@ App.InvitePage = (function () {
         // Prerequisites
         html += '<div class="prerequisites-section">';
         html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
-        html += regField('beltTrainings', t('beltTrainings'), 'number', false);
         html += regField('gasshukuCount', t('gasshukuCount'), 'number', false);
+        html += '<div class="shodan-subsection">';
+        html += '<h4 class="subsection-title">' + t('shodanAndAbove') + '</h4>';
+        html += regField('beltTrainings', t('beltTrainings'), 'number', false);
+        html += '</div>';
         html += '</div>';
 
         html += '<div id="reg-error" class="auth-error" style="display:none"></div>';

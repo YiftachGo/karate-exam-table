@@ -113,7 +113,8 @@ App.I18n = (function () {
             examNotes: 'הערות מבחן',
             generatedOn: 'הופק בתאריך',
             // Prerequisites
-            prerequisites: 'דרישות קדם',
+            prerequisites: 'דרישות מקדימות',
+            shodanAndAbove: 'לנבחנים לדרגת שודאן ומעלה בלבד',
             beltTrainings: 'אימוני שחורות',
             gasshukuCount: 'גשוקואים',
             examPayment: 'תשלום מבחן',
@@ -238,6 +239,7 @@ App.I18n = (function () {
             generatedOn: 'Generated on',
             // Prerequisites
             prerequisites: 'Prerequisites',
+            shodanAndAbove: 'For Shodan and above candidates only',
             beltTrainings: 'Belt Trainings',
             gasshukuCount: 'Gasshuku Attended',
             examPayment: 'Exam Payment',
