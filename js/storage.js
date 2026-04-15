@@ -303,8 +303,14 @@ App.Storage = (function () {
     async function selfRegisterExaminee(examId, data, invitationCode) {
         var examRef = App.db.collection('exams').doc(examId);
         var examineeRef = examRef.collection('examinees').doc();
-        var examDoc = await examRef.get();
-        var currentCount = (examDoc.data().examineeCount || 0);
+        // Exam read may fail for unauthenticated users — order is cosmetic
+        var currentCount = 0;
+        try {
+            var examDoc = await examRef.get();
+            if (examDoc.exists) currentCount = (examDoc.data().examineeCount || 0);
+        } catch (e) {
+            console.warn('Could not read exam count (may be auth restriction):', e);
+        }
 
         await examineeRef.set({
             firstName: data.firstName,

@@ -138,6 +138,7 @@ App.InvitePage = (function () {
         });
 
         document.getElementById('btn-submit-reg').addEventListener('click', async function () {
+            var btn = this;
             var errorEl = document.getElementById('reg-error');
             errorEl.style.display = 'none';
 
@@ -149,6 +150,10 @@ App.InvitePage = (function () {
                 errorEl.style.display = '';
                 return;
             }
+
+            // Disable button immediately to prevent duplicate submissions
+            btn.disabled = true;
+            btn.textContent = t('loading');
 
             try {
                 var data = {
@@ -178,6 +183,9 @@ App.InvitePage = (function () {
 
                 showSuccess();
             } catch (err) {
+                // Re-enable button so user can try again
+                btn.disabled = false;
+                btn.textContent = t('submitRegistration');
                 errorEl.textContent = t('error') + ': ' + err.message;
                 errorEl.style.display = '';
             }
