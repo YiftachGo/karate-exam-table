@@ -79,6 +79,21 @@ App.ExamineeDetail = (function () {
         html += '<option value="exempt"' + (ex.examPayment === 'exempt' ? ' selected' : '') + '>' + t('exempt') + '</option>';
         html += '</select>';
         html += '</div>';
+
+        html += '<div class="form-group">';
+        html += '<label>' + t('formSubmitted') + '</label>';
+        html += '<select id="field-formSubmitted">';
+        html += '<option value="">' + t('selectStatus') + '</option>';
+        html += '<option value="submitted"' + (ex.formSubmitted === 'submitted' ? ' selected' : '') + '>' + t('submitted') + '</option>';
+        html += '<option value="not_submitted"' + (ex.formSubmitted === 'not_submitted' ? ' selected' : '') + '>' + t('notSubmitted') + '</option>';
+        html += '</select>';
+        html += '</div>';
+
+        html += '<div class="form-group">';
+        html += '<label>' + t('theoryExamGrade') + '</label>';
+        html += '<input type="text" id="field-theoryExamGrade" value="' + App.Utils.escapeHtml(String(ex.theoryExamGrade || '')) + '">';
+        html += '</div>';
+
         html += '</div>';
 
         html += '<div class="form-actions">';
@@ -185,7 +200,9 @@ App.ExamineeDetail = (function () {
             trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value,
             beltTrainings: document.getElementById('field-beltTrainings').value,
             gasshukuCount: document.getElementById('field-gasshukuCount').value,
-            examPayment: document.getElementById('field-examPayment').value
+            examPayment: document.getElementById('field-examPayment').value,
+            formSubmitted: document.getElementById('field-formSubmitted').value,
+            theoryExamGrade: document.getElementById('field-theoryExamGrade').value.trim()
         };
         await App.Storage.updateExaminee(examId, examineeId, data);
         App.showToast(App.I18n.t('dataSaved'));

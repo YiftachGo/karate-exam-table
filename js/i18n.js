@@ -120,7 +120,11 @@ App.I18n = (function () {
             selectStatus: 'בחר סטטוס',
             paid: 'שולם',
             unpaid: 'לא שולם',
-            exempt: 'פטור'
+            exempt: 'פטור',
+            formSubmitted: 'הגשת טופס',
+            submitted: 'הוגש',
+            notSubmitted: 'לא הוגש',
+            theoryExamGrade: 'ציון בחינה עיונית'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -240,7 +244,11 @@ App.I18n = (function () {
             selectStatus: 'Select status',
             paid: 'Paid',
             unpaid: 'Unpaid',
-            exempt: 'Exempt'
+            exempt: 'Exempt',
+            formSubmitted: 'Form Submission',
+            submitted: 'Submitted',
+            notSubmitted: 'Not Submitted',
+            theoryExamGrade: 'Theory Exam Grade'
         }
     };
 

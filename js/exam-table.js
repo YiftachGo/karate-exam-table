@@ -431,6 +431,11 @@ App.ExamTable = (function () {
             var payLabel = ex.examPayment === 'paid' ? t('paid') : ex.examPayment === 'unpaid' ? t('unpaid') : ex.examPayment === 'exempt' ? t('exempt') : ex.examPayment;
             html += '<div class="info-item"><div class="info-label">' + t('examPayment') + '</div><div class="info-value">' + payLabel + '</div></div>';
         }
+        if (ex.formSubmitted) {
+            var formLabel = ex.formSubmitted === 'submitted' ? t('submitted') : t('notSubmitted');
+            html += '<div class="info-item"><div class="info-label">' + t('formSubmitted') + '</div><div class="info-value">' + formLabel + '</div></div>';
+        }
+        if (ex.theoryExamGrade) html += '<div class="info-item"><div class="info-label">' + t('theoryExamGrade') + '</div><div class="info-value">' + App.Utils.escapeHtml(String(ex.theoryExamGrade)) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">' + t('examName') + '</div><div class="info-value">' + App.Utils.escapeHtml(exam.name) + '</div></div>';
         if (exam.date) html += '<div class="info-item"><div class="info-label">' + t('examDate') + '</div><div class="info-value">' + App.Utils.formatDate(exam.date) + '</div></div>';
         html += '</div>';
