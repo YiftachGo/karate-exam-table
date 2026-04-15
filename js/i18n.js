@@ -84,6 +84,22 @@ App.I18n = (function () {
             thankYou: 'תודה!',
             loading: 'טוען...',
             error: 'שגיאה',
+            // Copy examinees
+            copyExaminees: 'העתק נבחנים',
+            selectTargetExam: 'בחר מבחן יעד',
+            selectExaminees: 'בחר נבחנים',
+            selectAll: 'בחר הכל',
+            copy: 'העתק',
+            examineesCopied: 'הנבחנים הועתקו בהצלחה',
+            noExamSelected: 'אנא בחר מבחן יעד',
+            noExamineesSelected: 'אנא בחר לפחות נבחן אחד',
+            // Category management
+            manageCategories: 'נהל קטגוריות',
+            addCategory: 'הוסף קטגוריה',
+            editCategory: 'ערוך קטגוריה',
+            categoryNameHe: 'שם בעברית',
+            categoryNameEn: 'שם באנגלית',
+            confirmDeleteCategory: 'למחוק קטגוריה זו מהמבחן?',
             // Drag & Drop
             dragToReorder: 'גרור לשינוי סדר',
             // Pass/Fail
@@ -187,6 +203,22 @@ App.I18n = (function () {
             thankYou: 'Thank You!',
             loading: 'Loading...',
             error: 'Error',
+            // Copy examinees
+            copyExaminees: 'Copy Examinees',
+            selectTargetExam: 'Select Target Exam',
+            selectExaminees: 'Select Examinees',
+            selectAll: 'Select All',
+            copy: 'Copy',
+            examineesCopied: 'Examinees copied successfully',
+            noExamSelected: 'Please select a target exam',
+            noExamineesSelected: 'Please select at least one examinee',
+            // Category management
+            manageCategories: 'Manage Categories',
+            addCategory: 'Add Category',
+            editCategory: 'Edit Category',
+            categoryNameHe: 'Hebrew Name',
+            categoryNameEn: 'English Name',
+            confirmDeleteCategory: 'Delete this category from the exam?',
             // Drag & Drop
             dragToReorder: 'Drag to reorder',
             // Pass/Fail

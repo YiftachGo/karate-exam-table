@@ -214,6 +214,86 @@ input:focus, select:focus, textarea:focus {
     box-shadow: var(--shadow-lg);
 }
 
+.modal-wide {
+    min-width: 420px;
+    max-width: 560px;
+}
+
+/* Copy examinees modal */
+.copy-examinee-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.copy-select-all {
+    font-weight: 600;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.copy-examinee-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.copy-rank {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* Category management modal */
+.cat-mgr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+}
+
+.cat-mgr-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+}
+
+.cat-mgr-row:hover {
+    background: #eef0f7;
+}
+
+.cat-mgr-name {
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.cat-mgr-actions {
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+
+.cat-mgr-row:hover .cat-mgr-actions {
+    opacity: 1;
+}
+
 .modal h2 {
     margin-bottom: 16px;
     font-size: 1.2rem;

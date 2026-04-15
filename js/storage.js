@@ -300,6 +300,68 @@ App.Storage = (function () {
         return examineeRef.id;
     }
 
+    // --- Copy Examinees ---
+
+    async function copyExaminees(sourceExamId, targetExamId, examineeIds) {
+        var targetRef = App.db.collection('exams').doc(targetExamId);
+        var targetDoc = await targetRef.get();
+        var currentCount = (targetDoc.data().examineeCount || 0);
+
+        var batch = App.db.batch();
+        var addedCount = 0;
+
+        for (var i = 0; i < examineeIds.length; i++) {
+            var sourceDoc = await App.db.collection('exams').doc(sourceExamId)
+                .collection('examinees').doc(examineeIds[i]).get();
+            if (!sourceDoc.exists) continue;
+            var ex = sourceDoc.data();
+            var newRef = targetRef.collection('examinees').doc();
+            batch.set(newRef, {
+                firstName: ex.firstName || '',
+                lastName: ex.lastName || '',
+                dateOfBirth: ex.dateOfBirth || '',
+                rank: ex.rank || '',
+                club: ex.club || '',
+                trainingStartDate: ex.trainingStartDate || '',
+                lastExamDate: ex.lastExamDate || '',
+                trainingsPerWeek: ex.trainingsPerWeek || '',
+                beltTrainings: ex.beltTrainings || '',
+                gasshukuCount: ex.gasshukuCount || '',
+                examPayment: ex.examPayment || '',
+                photoUrl: ex.photoUrl || '',
+                order: currentCount + addedCount,
+                addedBy: 'copied:' + sourceExamId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            addedCount++;
+        }
+
+        if (addedCount > 0) {
+            await batch.commit();
+            await targetRef.update({
+                examineeCount: firebase.firestore.FieldValue.increment(addedCount),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        return addedCount;
+    }
+
+    // --- Category Management ---
+
+    async function updateCategoryOrder(examId, order) {
+        await App.db.collection('exams').doc(examId).update({
+            categoryOrder: order,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
+    async function updateCustomCategories(examId, customCategories) {
+        await App.db.collection('exams').doc(examId).update({
+            customCategories: customCategories,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
     // --- Export/Import ---
 
     async function exportExam(examId) {
@@ -412,6 +474,9 @@ App.Storage = (function () {
         verifyInvitationCode: verifyInvitationCode,
         selfRegisterExaminee: selfRegisterExaminee,
         exportExam: exportExam,
-        importExam: importExam
+        importExam: importExam,
+        copyExaminees: copyExaminees,
+        updateCategoryOrder: updateCategoryOrder,
+        updateCustomCategories: updateCustomCategories
     };
 })();

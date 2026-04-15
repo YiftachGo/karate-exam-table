@@ -69,19 +69,26 @@ App.Utils = (function () {
         return grades;
     }
 
-    function getCategoriesOrdered(orderArray) {
-        if (!orderArray || !orderArray.length) return CATEGORIES;
+    function getCategoriesOrdered(orderArray, customCategories) {
+        var custom = customCategories || {};
         var catMap = {};
         CATEGORIES.forEach(function (c) { catMap[c.key] = c; });
-        var ordered = [];
-        orderArray.forEach(function (key) {
-            if (catMap[key]) ordered.push(catMap[key]);
-        });
-        // Add any missing categories at the end
-        CATEGORIES.forEach(function (c) {
-            if (orderArray.indexOf(c.key) === -1) ordered.push(c);
-        });
-        return ordered;
+
+        if (!orderArray || !orderArray.length) {
+            // No explicit order — return all built-in with custom name overrides applied
+            return CATEGORIES.map(function (c) {
+                return custom[c.key] ? Object.assign({}, c, custom[c.key], { key: c.key }) : c;
+            });
+        }
+
+        return orderArray.map(function (key) {
+            var base = catMap[key] || null;
+            var override = custom[key] || null;
+            if (override) {
+                return Object.assign({}, base || { key: key }, override, { key: key });
+            }
+            return base || null;
+        }).filter(Boolean);
     }
 
     return {

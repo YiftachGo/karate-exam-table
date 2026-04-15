@@ -9,6 +9,7 @@ App.ExamTable = (function () {
     var cachedGrades = {};
     var cachedExaminees = {};
     var categoryOrder = null;
+    var customCategories = null;
     var dragSrcEl = null;
     var dragType = null; // 'category' or 'examinee'
 
@@ -26,6 +27,7 @@ App.ExamTable = (function () {
         cachedExaminees = cachedExam.examinees || {};
         cachedGrades = cachedExam.allGrades || {};
         categoryOrder = cachedExam.categoryOrder || App.Utils.DEFAULT_CATEGORY_ORDER;
+        customCategories = cachedExam.customCategories || {};
 
         autoSave = App.Utils.debounce(function (examineeId, catKey, value) {
             App.Storage.updateGrade(currentExamId, examineeId, catKey, value);
@@ -57,7 +59,7 @@ App.ExamTable = (function () {
         var container = document.getElementById('app');
         var exam = cachedExam;
         var examinees = getSortedExaminees();
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder);
+        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
         var currentUserId = App.Auth.getUserId();
         var isOwner = exam.ownerId === currentUserId;
         var trainerNames = exam.trainerNames || {};
@@ -71,10 +73,12 @@ App.ExamTable = (function () {
         html += '<span class="exam-date-badge">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-add-examinee">+ ' + t('addExaminee') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-copy-examinees">' + t('copyExaminees') + '</button>';
         if (isOwner) {
             html += '<button class="btn btn-outline" id="btn-share-exam">' + t('shareExam') + '</button>';
             html += '<button class="btn btn-outline" id="btn-invite-examinees">' + t('inviteExaminees') + '</button>';
         }
+        html += '<button class="btn btn-outline" id="btn-manage-categories">' + t('manageCategories') + '</button>';
         html += '<button class="btn btn-outline" id="btn-export-exam">' + t('export') + '</button>';
         html += '</div>';
 
@@ -377,11 +381,7 @@ App.ExamTable = (function () {
         var item = order.splice(fromIdx, 1)[0];
         order.splice(toIdx, 0, item);
         categoryOrder = order;
-
-        // Save category order to exam doc
-        await App.db.collection('exams').doc(currentExamId).update({
-            categoryOrder: order
-        });
+        await App.Storage.updateCategoryOrder(currentExamId, order);
         renderTable();
     }
 
@@ -394,7 +394,7 @@ App.ExamTable = (function () {
         if (!ex) return;
 
         var exam = cachedExam;
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder);
+        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
         var exGrades = cachedGrades[examineeId] || {};
         var trainerNames = exam.trainerNames || {};
         var dir = lang === 'he' ? 'rtl' : 'ltr';
@@ -495,6 +495,9 @@ App.ExamTable = (function () {
         document.getElementById('btn-export-exam').addEventListener('click', function () {
             App.Storage.exportExam(currentExamId);
         });
+
+        document.getElementById('btn-copy-examinees').addEventListener('click', showCopyExamineesModal);
+        document.getElementById('btn-manage-categories').addEventListener('click', showManageCategoriesModal);
 
         var shareBtn = document.getElementById('btn-share-exam');
         if (shareBtn) {
@@ -689,6 +692,190 @@ App.ExamTable = (function () {
         if (copyCodeBtn) { copyCodeBtn.addEventListener('click', function () { navigator.clipboard.writeText(document.getElementById('invite-code').value); App.showToast(t('copied')); }); }
         document.getElementById('btn-close-invite').addEventListener('click', function () { modalContainer.innerHTML = ''; });
         document.getElementById('invite-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+    }
+
+    // --- Copy Examinees Modal ---
+
+    async function showCopyExamineesModal() {
+        var t = App.I18n.t;
+        var modalContainer = document.getElementById('modal-container');
+        var examinees = getSortedExaminees();
+        var allExams = await App.Storage.getExamIndex();
+        var otherExams = allExams.filter(function (e) { return e.id !== currentExamId; });
+
+        var html = '<div class="modal-overlay" id="copy-overlay"><div class="modal">';
+        html += '<h2>' + t('copyExaminees') + '</h2>';
+
+        // Examinee list
+        html += '<div class="form-group">';
+        html += '<label>' + t('selectExaminees') + '</label>';
+        html += '<div class="copy-examinee-list">';
+        html += '<label class="copy-select-all"><input type="checkbox" id="copy-select-all"> ' + t('selectAll') + '</label>';
+        examinees.forEach(function (ex) {
+            html += '<label class="copy-examinee-item">';
+            html += '<input type="checkbox" class="copy-examinee-cb" value="' + ex.id + '"> ';
+            html += App.Utils.escapeHtml(ex.firstName + ' ' + ex.lastName);
+            if (ex.rank) html += ' <span class="copy-rank">(' + App.Utils.escapeHtml(ex.rank) + ')</span>';
+            html += '</label>';
+        });
+        html += '</div>';
+        html += '</div>';
+
+        // Target exam dropdown
+        html += '<div class="form-group">';
+        html += '<label>' + t('selectTargetExam') + '</label>';
+        html += '<select id="copy-target-exam">';
+        html += '<option value="">' + t('selectTargetExam') + '</option>';
+        otherExams.forEach(function (e) {
+            html += '<option value="' + e.id + '">' + App.Utils.escapeHtml(e.name) + (e.date ? ' — ' + App.Utils.formatDate(e.date) : '') + '</option>';
+        });
+        html += '</select>';
+        html += '</div>';
+
+        html += '<div id="copy-error" class="auth-error" style="display:none"></div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-primary" id="btn-confirm-copy">' + t('copy') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-cancel-copy">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        // Select all toggle
+        document.getElementById('copy-select-all').addEventListener('change', function () {
+            document.querySelectorAll('.copy-examinee-cb').forEach(function (cb) {
+                cb.checked = this.checked;
+            }.bind(this));
+        });
+
+        document.getElementById('btn-cancel-copy').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('copy-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+
+        document.getElementById('btn-confirm-copy').addEventListener('click', async function () {
+            var errorEl = document.getElementById('copy-error');
+            errorEl.style.display = 'none';
+            var targetExamId = document.getElementById('copy-target-exam').value;
+            var selectedIds = Array.from(document.querySelectorAll('.copy-examinee-cb:checked')).map(function (cb) { return cb.value; });
+
+            if (!targetExamId) { errorEl.textContent = t('noExamSelected'); errorEl.style.display = ''; return; }
+            if (!selectedIds.length) { errorEl.textContent = t('noExamineesSelected'); errorEl.style.display = ''; return; }
+
+            document.getElementById('btn-confirm-copy').disabled = true;
+            var count = await App.Storage.copyExaminees(currentExamId, targetExamId, selectedIds);
+            modalContainer.innerHTML = '';
+            App.showToast(t('examineesCopied'));
+        });
+    }
+
+    // --- Manage Categories Modal ---
+
+    function showManageCategoriesModal() {
+        var t = App.I18n.t;
+        var lang = App.I18n.getLang();
+        var modalContainer = document.getElementById('modal-container');
+        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+
+        var html = '<div class="modal-overlay" id="cat-mgr-overlay"><div class="modal modal-wide">';
+        html += '<h2>' + t('manageCategories') + '</h2>';
+        html += '<div class="cat-mgr-list">';
+        categories.forEach(function (cat) {
+            html += '<div class="cat-mgr-row" data-key="' + cat.key + '">';
+            html += '<span class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he) + '</span>';
+            html += '<div class="cat-mgr-actions">';
+            html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️</button>';
+            html += '<button class="btn btn-sm btn-danger cat-delete-btn" data-key="' + cat.key + '">🗑️</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+        html += '<div class="modal-actions" style="justify-content:space-between">';
+        html += '<button class="btn btn-outline" id="btn-add-category">+ ' + t('addCategory') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-close-cat-mgr">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        // Edit buttons
+        document.querySelectorAll('.cat-edit-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                showCategoryEditForm(btn.dataset.key);
+            });
+        });
+
+        // Delete buttons
+        document.querySelectorAll('.cat-delete-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                if (!confirm(t('confirmDeleteCategory'))) return;
+                categoryOrder = categoryOrder.filter(function (k) { return k !== btn.dataset.key; });
+                // Remove from customCategories if it was custom
+                if (customCategories[btn.dataset.key]) {
+                    delete customCategories[btn.dataset.key];
+                    await App.Storage.updateCustomCategories(currentExamId, customCategories);
+                }
+                await App.Storage.updateCategoryOrder(currentExamId, categoryOrder);
+                cachedExam.categoryOrder = categoryOrder;
+                cachedExam.customCategories = customCategories;
+                modalContainer.innerHTML = '';
+                renderTable();
+            });
+        });
+
+        document.getElementById('btn-add-category').addEventListener('click', function () {
+            showCategoryEditForm(null);
+        });
+        document.getElementById('btn-close-cat-mgr').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('cat-mgr-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+    }
+
+    function showCategoryEditForm(catKey) {
+        var t = App.I18n.t;
+        var isNew = !catKey;
+        var modalContainer = document.getElementById('modal-container');
+
+        // Find existing values
+        var existingHe = '';
+        var existingEn = '';
+        if (!isNew) {
+            var cats = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+            var existing = cats.find(function (c) { return c.key === catKey; });
+            if (existing) { existingHe = existing.he || ''; existingEn = existing.en || ''; }
+        }
+
+        var html = '<div class="modal-overlay" id="cat-edit-overlay"><div class="modal">';
+        html += '<h2>' + t(isNew ? 'addCategory' : 'editCategory') + '</h2>';
+        html += '<div class="form-group"><label>' + t('categoryNameHe') + '</label>';
+        html += '<input type="text" id="cat-name-he" value="' + App.Utils.escapeHtml(existingHe) + '" dir="rtl" autofocus></div>';
+        html += '<div class="form-group"><label>' + t('categoryNameEn') + '</label>';
+        html += '<input type="text" id="cat-name-en" value="' + App.Utils.escapeHtml(existingEn) + '" dir="ltr"></div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-primary" id="btn-save-category">' + t('save') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-back-cat-mgr">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+        document.getElementById('cat-name-he').focus();
+
+        document.getElementById('btn-back-cat-mgr').addEventListener('click', showManageCategoriesModal);
+        document.getElementById('cat-edit-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+
+        document.getElementById('btn-save-category').addEventListener('click', async function () {
+            var nameHe = document.getElementById('cat-name-he').value.trim();
+            var nameEn = document.getElementById('cat-name-en').value.trim();
+            if (!nameHe) { document.getElementById('cat-name-he').focus(); return; }
+
+            if (isNew) {
+                var newKey = 'custom_' + Date.now().toString(36);
+                customCategories[newKey] = { he: nameHe, en: nameEn || nameHe };
+                categoryOrder = categoryOrder.concat([newKey]);
+            } else {
+                customCategories[catKey] = { he: nameHe, en: nameEn || nameHe };
+            }
+
+            await Promise.all([
+                App.Storage.updateCustomCategories(currentExamId, customCategories),
+                isNew ? App.Storage.updateCategoryOrder(currentExamId, categoryOrder) : Promise.resolve()
+            ]);
+            cachedExam.categoryOrder = categoryOrder;
+            cachedExam.customCategories = customCategories;
+            modalContainer.innerHTML = '';
+            renderTable();
+        });
     }
 
     return { render: render };
