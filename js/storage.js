@@ -325,10 +325,15 @@ App.Storage = (function () {
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        await examRef.update({
-            examineeCount: firebase.firestore.FieldValue.increment(1),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        try {
+            await examRef.update({
+                examineeCount: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (e) {
+            // May fail for unauthenticated registrants — count is cosmetic
+            console.warn('Could not update exam count:', e);
+        }
 
         return examineeRef.id;
     }

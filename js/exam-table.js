@@ -12,6 +12,7 @@ App.ExamTable = (function () {
     var customCategories = null;
     var dragSrcEl = null;
     var dragType = null; // 'category' or 'examinee'
+    var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
     async function render(examId) {
         currentExamId = examId;
@@ -94,7 +95,7 @@ App.ExamTable = (function () {
             html += '<thead><tr>';
             html += '<th class="sticky-col category-header">' + t('category') + '</th>';
             examinees.forEach(function (ex, idx) {
-                html += '<th class="examinee-header" data-id="' + ex.id + '" data-order="' + idx + '" draggable="true">';
+                html += '<th class="examinee-header" data-id="' + ex.id + '" data-order="' + idx + '"' + (isTouch ? '' : ' draggable="true"') + '>';
                 html += '<div class="examinee-header-content">';
                 html += '<button class="btn btn-sm export-rec-btn" data-id="' + ex.id + '" title="' + t('exportRecommendation') + '">&#128196;</button>';
                 html += '<div class="drag-handle" title="' + t('dragToReorder') + '">&#8942;&#8942;</div>';
@@ -117,7 +118,7 @@ App.ExamTable = (function () {
             html += '<tbody>';
             categories.forEach(function (cat, idx) {
                 html += '<tr data-cat-key="' + cat.key + '" data-cat-order="' + idx + '">';
-                html += '<td class="sticky-col category-cell" draggable="true">';
+                html += '<td class="sticky-col category-cell"' + (isTouch ? '' : ' draggable="true"') + '>';
                 html += '<span class="drag-handle-row" title="' + t('dragToReorder') + '">&#8942;&#8942;</span> ';
                 html += cat[lang];
                 html += '</td>';

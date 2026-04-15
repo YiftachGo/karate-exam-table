@@ -55,7 +55,6 @@
     }
 
     .table-wrapper {
-        margin: 0 -12px;
         border-radius: 0;
     }
 
@@ -91,6 +90,11 @@
 
 /* Touch-friendly */
 @media (hover: none) and (pointer: coarse) {
+    .drag-handle,
+    .drag-handle-row {
+        display: none;
+    }
+
     .examinee-header .remove-examinee-btn {
         opacity: 0.7;
     }
