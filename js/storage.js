@@ -25,17 +25,21 @@ App.Storage = (function () {
             var snapshot = await App.db.collection('exams')
                 .where('trainerIds', 'array-contains', userId)
                 .get();
-            var exams = snapshot.docs.map(function (doc) {
+            // Query actual examinee count from subcollections (the examineeCount field
+            // on the exam doc is unreliable — unauthenticated self-registrants cannot update it)
+            var exams = await Promise.all(snapshot.docs.map(async function (doc) {
                 var d = doc.data();
+                var countSnap = await App.db.collection('exams').doc(doc.id)
+                    .collection('examinees').get();
                 return {
                     id: doc.id,
                     name: d.name,
                     date: d.date,
                     createdAt: d.createdAt,
-                    examineeCount: d.examineeCount || 0,
+                    examineeCount: countSnap.size,
                     ownerId: d.ownerId
                 };
-            });
+            }));
             // Sort client-side (avoids needing composite index)
             exams.sort(function (a, b) {
                 var ta = a.createdAt ? a.createdAt.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime() : 0;
