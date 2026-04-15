@@ -284,18 +284,36 @@ App.Storage = (function () {
 
     async function generateInvitationCode(examId) {
         var code = Math.random().toString(36).substring(2, 8).toUpperCase();
-        await App.db.collection('exams').doc(examId).update({
-            invitationCode: code
+        var examRef = App.db.collection('exams').doc(examId);
+        var examDoc = await examRef.get();
+        var exam = examDoc.data();
+        await examRef.update({ invitationCode: code });
+        // Write public invitation doc — contains only code/name/date, not the full exam
+        await App.db.collection('examInvitations').doc(examId).set({
+            code: code,
+            name: exam.name || '',
+            date: exam.date || ''
         });
         return code;
     }
 
+    // Syncs the public examInvitations doc — called when trainer opens the invite modal
+    // to ensure backward-compatible exams (created before examInvitations existed) still work
+    async function syncInvitationDoc(examId, code, name, date) {
+        await App.db.collection('examInvitations').doc(examId).set({
+            code: code,
+            name: name || '',
+            date: date || ''
+        });
+    }
+
     async function verifyInvitationCode(examId, code) {
-        var doc = await App.db.collection('exams').doc(examId).get();
+        // Read from the public examInvitations collection — never from the full exam doc
+        var doc = await App.db.collection('examInvitations').doc(examId).get();
         if (!doc.exists) return null;
-        var exam = doc.data();
-        if (exam.invitationCode && exam.invitationCode === code.toUpperCase()) {
-            return { id: doc.id, name: exam.name, date: exam.date };
+        var inv = doc.data();
+        if (inv.code && inv.code === code.toUpperCase()) {
+            return { id: examId, name: inv.name, date: inv.date };
         }
         return null;
     }
@@ -303,14 +321,6 @@ App.Storage = (function () {
     async function selfRegisterExaminee(examId, data, invitationCode) {
         var examRef = App.db.collection('exams').doc(examId);
         var examineeRef = examRef.collection('examinees').doc();
-        // Exam read may fail for unauthenticated users — order is cosmetic
-        var currentCount = 0;
-        try {
-            var examDoc = await examRef.get();
-            if (examDoc.exists) currentCount = (examDoc.data().examineeCount || 0);
-        } catch (e) {
-            console.warn('Could not read exam count (may be auth restriction):', e);
-        }
 
         await examineeRef.set({
             firstName: data.firstName,
@@ -325,7 +335,7 @@ App.Storage = (function () {
             gasshukuCount: data.gasshukuCount || '',
             examPayment: data.examPayment || '',
             photoUrl: data.photoUrl || '',
-            order: currentCount,
+            order: 0,
             addedBy: 'self-registration',
             invitationCode: invitationCode,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -515,6 +525,7 @@ App.Storage = (function () {
         subscribeToExaminees: subscribeToExaminees,
         addTrainerByEmail: addTrainerByEmail,
         generateInvitationCode: generateInvitationCode,
+        syncInvitationDoc: syncInvitationDoc,
         verifyInvitationCode: verifyInvitationCode,
         selfRegisterExaminee: selfRegisterExaminee,
         exportExam: exportExam,

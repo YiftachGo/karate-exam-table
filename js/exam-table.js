@@ -703,6 +703,12 @@ App.ExamTable = (function () {
         var baseUrl = window.location.origin + window.location.pathname;
         var link = baseUrl + '#/invite/' + currentExamId;
 
+        if (code) {
+            // Ensure examInvitations doc is up to date (backward compat for pre-existing codes)
+            App.Storage.syncInvitationDoc(currentExamId, code, exam.name, exam.date)
+                .catch(function () {});
+        }
+
         var html = '<div class="modal-overlay" id="invite-overlay"><div class="modal">';
         html += '<h2>' + t('inviteExaminees') + '</h2>';
         if (code) {
