@@ -619,23 +619,48 @@ App.ExamTable = (function () {
         await App.Storage.addExaminee(currentExamId, firstName, lastName, rank);
     }
 
-    function showShareModal() {
+    async function showShareModal() {
         var t = App.I18n.t;
         var exam = cachedExam;
         var trainerNames = exam.trainerNames || {};
+        var currentTrainerIds = exam.trainerIds || [];
         var modalContainer = document.getElementById('modal-container');
+
+        // Load trainers from previous exams
+        var knownTrainers = await App.Storage.getKnownTrainers();
+        // Filter out trainers already in this exam
+        var suggestedTrainers = Object.keys(knownTrainers).filter(function (tid) {
+            return currentTrainerIds.indexOf(tid) === -1;
+        });
 
         var html = '<div class="modal-overlay" id="share-overlay">';
         html += '<div class="modal">';
         html += '<h2>' + t('shareExam') + '</h2>';
+
+        // Current trainers list
         html += '<div class="trainer-list"><h3>' + t('sharedTrainers') + '</h3>';
-        (exam.trainerIds || []).forEach(function (tid) {
+        currentTrainerIds.forEach(function (tid) {
             var name = trainerNames[tid] || tid.slice(0, 8);
             var label = tid === exam.ownerId ? ' (' + t('owner') + ')' : '';
             var youLabel = tid === App.Auth.getUserId() ? ' (' + t('you') + ')' : '';
             html += '<div class="trainer-item">' + App.Utils.escapeHtml(name) + label + youLabel + '</div>';
         });
         html += '</div>';
+
+        // Suggested trainers from previous exams
+        if (suggestedTrainers.length > 0) {
+            html += '<div class="trainer-list" style="margin-top:14px"><h3>' + t('fromPreviousExams') + '</h3>';
+            suggestedTrainers.forEach(function (tid) {
+                var name = knownTrainers[tid];
+                html += '<div class="trainer-item trainer-item-suggest">';
+                html += '<span>' + App.Utils.escapeHtml(name) + '</span>';
+                html += '<button class="btn btn-sm btn-outline btn-quick-add" data-id="' + tid + '" data-name="' + App.Utils.escapeHtml(name) + '">+ ' + t('addTrainer') + '</button>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        // Manual email input
         html += '<div class="form-group" style="margin-top:16px"><label>' + t('trainerEmail') + '</label>';
         html += '<input type="email" id="trainer-email" placeholder="email@example.com"></div>';
         html += '<div id="share-error" class="auth-error" style="display:none"></div>';
@@ -644,6 +669,17 @@ App.ExamTable = (function () {
         html += '<button class="btn btn-outline" id="btn-close-share">' + t('cancel') + '</button>';
         html += '</div></div></div>';
         modalContainer.innerHTML = html;
+
+        // Quick-add buttons (from previous exams)
+        document.querySelectorAll('.btn-quick-add').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                btn.disabled = true;
+                await App.Storage.addTrainerById(currentExamId, btn.dataset.id, btn.dataset.name);
+                cachedExam = await App.Storage.getExam(currentExamId);
+                App.showToast(t('trainerAdded'));
+                showShareModal();
+            });
+        });
 
         document.getElementById('btn-add-trainer').addEventListener('click', async function () {
             var email = document.getElementById('trainer-email').value.trim();

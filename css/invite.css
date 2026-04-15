@@ -80,6 +80,17 @@
     font-size: 0.9rem;
 }
 
+.trainer-item-suggest {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trainer-item-suggest .btn-quick-add {
+    font-size: 0.75rem;
+    padding: 2px 10px;
+}
+
 .other-trainer-note {
     padding: 4px 6px;
     margin-bottom: 4px;

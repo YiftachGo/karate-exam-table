@@ -247,6 +247,39 @@ App.Storage = (function () {
         }
     }
 
+    async function addTrainerById(examId, trainerId, trainerName) {
+        var updateData = {
+            trainerIds: firebase.firestore.FieldValue.arrayUnion(trainerId),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        updateData['trainerNames.' + trainerId] = trainerName;
+        await App.db.collection('exams').doc(examId).update(updateData);
+        return { success: true, trainerId: trainerId, trainerName: trainerName };
+    }
+
+    async function getKnownTrainers() {
+        var userId = App.Auth.getUserId();
+        try {
+            var snapshot = await App.db.collection('exams')
+                .where('trainerIds', 'array-contains', userId)
+                .get();
+            var trainers = {};
+            snapshot.docs.forEach(function (doc) {
+                var data = doc.data();
+                var names = data.trainerNames || {};
+                (data.trainerIds || []).forEach(function (tid) {
+                    if (tid !== userId && !trainers[tid]) {
+                        trainers[tid] = names[tid] || tid.slice(0, 8);
+                    }
+                });
+            });
+            return trainers;
+        } catch (err) {
+            console.error('getKnownTrainers error:', err);
+            return {};
+        }
+    }
+
     // --- Invitation ---
 
     async function generateInvitationCode(examId) {
@@ -477,6 +510,8 @@ App.Storage = (function () {
         importExam: importExam,
         copyExaminees: copyExaminees,
         updateCategoryOrder: updateCategoryOrder,
-        updateCustomCategories: updateCustomCategories
+        updateCustomCategories: updateCustomCategories,
+        addTrainerById: addTrainerById,
+        getKnownTrainers: getKnownTrainers
     };
 })();
