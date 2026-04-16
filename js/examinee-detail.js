@@ -54,7 +54,7 @@ App.ExamineeDetail = (function () {
         html += '</div>';
         html += '</div>';
 
-        html += formGroup('rank', t('rank'), 'text', ex.rank);
+        html += App.Utils.buildRankSelect('field-rank', ex.rank, t('rank'));
         html += clubSelectGroup(t('club'), ex.club || '');
 
         html += '<div class="form-row">';
@@ -198,7 +198,7 @@ App.ExamineeDetail = (function () {
             firstName: document.getElementById('field-firstName').value.trim(),
             lastName: document.getElementById('field-lastName').value.trim(),
             dateOfBirth: document.getElementById('field-dateOfBirth').value,
-            rank: document.getElementById('field-rank').value.trim(),
+            rank: document.getElementById('field-rank').value,
             club: document.getElementById('field-club').value.trim(),
             trainingStartDate: document.getElementById('field-trainingStartDate').value,
             lastExamDate: document.getElementById('field-lastExamDate').value,

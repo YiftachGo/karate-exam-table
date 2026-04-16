@@ -61,6 +61,62 @@ App.Utils = (function () {
 
     var DEFAULT_CATEGORY_ORDER = CATEGORIES.map(function (c) { return c.key; });
 
+    // --- Belt Ranks ---
+
+    var _blueStripes  = ['', ' - פס כחול', ' - שני פסים כחולים', ' - שלושה פסים כחולים', ' - ארבעה פסים כחולים', ' - חמישה פסים כחולים'];
+    var _greenStripes = ['', ' - פס ירוק', ' - שני פסים ירוקים', ' - שלושה פסים ירוקים', ' - ארבעה פסים ירוקים', ' - חמישה פסים ירוקים'];
+
+    function _expand(colors, stripes) {
+        var out = [];
+        colors.forEach(function (c) { stripes.forEach(function (s) { out.push(c + s); }); });
+        return out;
+    }
+
+    var RANK_GROUPS = [
+        {
+            label: 'בוגרים (גיל 16 ומעלה)',
+            ranks: [
+                'קיו 10 לבנה',
+                'קיו 9 לבנה עם פס אדום',
+                'קיו 8 לבנה שני פסים',
+                'קיו 7 צהובה',
+                'קיו 6 צהובה פס',
+                'קיו 5 ירוקה',
+                'קיו 4 ירוקה פס',
+                'קיו 3 חומה',
+                'קיו 2 חומה פס',
+                'קיו אחד חומה שני פסים',
+                'חגורה שחורה דאן 1 ומעלה'
+            ]
+        },
+        {
+            label: 'ילדים מגיל 10 (פסים כחולים)',
+            ranks: _expand(['לבנה', 'כתומה', 'אדומה', 'סגולה', 'כחולה', 'אפורה'], _blueStripes)
+        },
+        {
+            label: 'ילדים עד גיל 10 (פסים ירוקים)',
+            ranks: _expand(['לבנה', 'לבנה-צהובה', 'צהובה-כתומה', 'כתומה-ירוקה'], _greenStripes)
+        }
+    ];
+
+    function buildRankSelect(id, currentVal, labelText) {
+        var esc = escapeHtml;
+        var html = '<div class="form-group">';
+        if (labelText) html += '<label for="' + id + '">' + labelText + '</label>';
+        html += '<select id="' + id + '">';
+        html += '<option value=""></option>';
+        RANK_GROUPS.forEach(function (group) {
+            html += '<optgroup label="' + esc(group.label) + '">';
+            group.ranks.forEach(function (rank) {
+                html += '<option value="' + esc(rank) + '"' + (currentVal === rank ? ' selected' : '') + '>' + esc(rank) + '</option>';
+            });
+            html += '</optgroup>';
+        });
+        html += '</select>';
+        html += '</div>';
+        return html;
+    }
+
     function getEmptyGrades() {
         var grades = {};
         CATEGORIES.forEach(function (cat) {
@@ -100,6 +156,8 @@ App.Utils = (function () {
         CATEGORIES: CATEGORIES,
         DEFAULT_CATEGORY_ORDER: DEFAULT_CATEGORY_ORDER,
         getCategoriesOrdered: getCategoriesOrdered,
-        getEmptyGrades: getEmptyGrades
+        getEmptyGrades: getEmptyGrades,
+        RANK_GROUPS: RANK_GROUPS,
+        buildRankSelect: buildRankSelect
     };
 })();

@@ -92,7 +92,7 @@ App.InvitePage = (function () {
 
         html += '<div class="form-row">';
         html += regField('dateOfBirth', t('dateOfBirth'), 'date', false);
-        html += regField('rank', t('rank'), 'text', false);
+        html += App.Utils.buildRankSelect('reg-rank', '', t('rank'));
         html += '</div>';
 
         html += regClubSelect(t('club'));
