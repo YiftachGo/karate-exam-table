@@ -382,12 +382,17 @@ App.ExamTable = (function () {
         }
     }
 
-    // Build a rank → index map from the ordered RANK_GROUPS. Lower index = lower rank.
-    // Unranked students get Infinity (sorted last).
+    // Build a rank → index map. Lower index = lower rank. Unranked students get Infinity.
+    // Tier ordering: adults > kids 10+ > kids under 10. RANK_GROUPS is stored in display
+    // order (adults first for the UI dropdown), so we iterate in REVERSE so kids<10 get
+    // the lowest indices and adults get the highest — adult dan 4 ends up as the top rank.
+    // For duplicate names (e.g. "לבנה" in both kids groups), first match wins — which
+    // under the reversed iteration is kids<10. Acceptable for a rare edge case.
     function getRankIndexMap() {
         var map = {};
         var idx = 0;
-        (App.Utils.RANK_GROUPS || []).forEach(function (group) {
+        var groups = (App.Utils.RANK_GROUPS || []).slice().reverse();
+        groups.forEach(function (group) {
             group.ranks.forEach(function (rank) {
                 if (!(rank in map)) map[rank] = idx;
                 idx++;
@@ -396,9 +401,10 @@ App.ExamTable = (function () {
         return map;
     }
 
-    async function sortExamineesByKey(key) {
+    async function sortExamineesByKey(key, direction) {
         var list = getSortedExaminees();
         var rankMap = key === 'rank' ? getRankIndexMap() : null;
+        var desc = direction === 'desc';
         list.sort(function (a, b) {
             var av, bv;
             if (key === 'firstName') {
@@ -410,15 +416,18 @@ App.ExamTable = (function () {
             } else if (key === 'rank') {
                 av = rankMap[a.rank];
                 bv = rankMap[b.rank];
-                if (av === undefined) av = Infinity;
-                if (bv === undefined) bv = Infinity;
-                return av - bv;
+                // Unranked always sorted last, regardless of direction
+                if (av === undefined && bv === undefined) return 0;
+                if (av === undefined) return 1;
+                if (bv === undefined) return -1;
+                return desc ? (bv - av) : (av - bv);
             }
-            // Empty strings last
+            // Empty strings always last, regardless of direction
             if (!av && !bv) return 0;
             if (!av) return 1;
             if (!bv) return -1;
-            return av.localeCompare(bv, 'he');
+            var cmp = av.localeCompare(bv, 'he');
+            return desc ? -cmp : cmp;
         });
         await applyExamineeOrder(list.map(function (e) { return e.id; }));
     }
@@ -462,9 +471,10 @@ App.ExamTable = (function () {
         var html = '<div class="modal-overlay" id="sort-overlay"><div class="modal">';
         html += '<h2>' + t('sortExaminees') + '</h2>';
         html += '<div class="sort-options">';
-        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="firstName">' + t('sortByFirstName') + '</button>';
-        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="lastName">' + t('sortByLastName') + '</button>';
-        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="rank">' + t('sortByRank') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="firstName" data-dir="asc">' + t('sortByFirstName') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="lastName" data-dir="asc">' + t('sortByLastName') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="rank" data-dir="asc">' + t('sortByRankAsc') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="rank" data-dir="desc">' + t('sortByRankDesc') + '</button>';
         html += '</div>';
         html += '<div class="modal-actions">';
         html += '<button class="btn btn-outline" id="btn-close-sort">' + t('cancel') + '</button>';
@@ -474,7 +484,7 @@ App.ExamTable = (function () {
         document.querySelectorAll('.sort-opt-btn').forEach(function (btn) {
             btn.addEventListener('click', async function () {
                 modalContainer.innerHTML = '';
-                await sortExamineesByKey(btn.dataset.key);
+                await sortExamineesByKey(btn.dataset.key, btn.dataset.dir);
                 renderTable();
             });
         });

@@ -131,7 +131,8 @@ App.I18n = (function () {
             sortExaminees: 'מיין נבחנים',
             sortByFirstName: 'לפי שם פרטי',
             sortByLastName: 'לפי שם משפחה',
-            sortByRank: 'לפי דרגה',
+            sortByRankAsc: 'לפי דרגה (מהנמוכה לגבוהה)',
+            sortByRankDesc: 'לפי דרגה (מהגבוהה לנמוכה)',
             // Excel / CSV
             exportToExcel: 'ייצוא ל-Excel',
             exportToCsv: 'ייצוא ל-CSV',
@@ -277,7 +278,8 @@ App.I18n = (function () {
             sortExaminees: 'Sort Examinees',
             sortByFirstName: 'By First Name',
             sortByLastName: 'By Last Name',
-            sortByRank: 'By Rank',
+            sortByRankAsc: 'By Rank (low \u2192 high)',
+            sortByRankDesc: 'By Rank (high \u2192 low)',
             // Excel / CSV
             exportToExcel: 'Export to Excel',
             exportToCsv: 'Export to CSV',
