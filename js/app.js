@@ -36,6 +36,19 @@ App.init = async function () {
         App.InvitePage.render(match[1]);
     });
 
+    App.Router.addRoute(/^#\/invite\/([^\/]+)\/edit\/([^\/\?]+)(?:\?(.*))?$/, function (match) {
+        // Student self-edit route - token auth via query string, no Firebase auth required
+        var examId = match[1];
+        var examineeId = match[2];
+        var query = match[3] || '';
+        var token = '';
+        query.split('&').forEach(function (pair) {
+            var kv = pair.split('=');
+            if (kv[0] === 't') token = decodeURIComponent(kv[1] || '');
+        });
+        App.InvitePage.renderEdit(examId, examineeId, token);
+    });
+
     App.Router.addRoute(/^#\/$/, function () {
         if (!App.Auth.isLoggedIn()) {
             App.Router.navigate('#/login');

@@ -326,6 +326,9 @@ App.Storage = (function () {
         var examRef = App.db.collection('exams').doc(examId);
         var examineeRef = examRef.collection('examinees').doc();
 
+        // Generate a random token the student will use to come back and edit their own registration
+        var selfEditToken = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
         await examineeRef.set({
             firstName: data.firstName,
             lastName: data.lastName,
@@ -342,6 +345,7 @@ App.Storage = (function () {
             order: 0,
             addedBy: 'self-registration',
             invitationCode: invitationCode,
+            selfEditToken: selfEditToken,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
@@ -355,7 +359,39 @@ App.Storage = (function () {
             console.warn('Could not update exam count:', e);
         }
 
-        return examineeRef.id;
+        return { id: examineeRef.id, selfEditToken: selfEditToken };
+    }
+
+    // Returns examinee data IFF the token matches. Used for student self-edit flow.
+    async function getSelfRegistration(examId, examineeId, token) {
+        var doc = await App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId).get();
+        if (!doc.exists) return null;
+        var data = doc.data();
+        if (!data.selfEditToken || data.selfEditToken !== token) return null;
+        return Object.assign({ id: doc.id }, data);
+    }
+
+    // Updates only personal fields (no grades, no order, no payment/form/theory).
+    // Sends the unchanged selfEditToken so the Firestore rule can verify identity.
+    async function selfUpdateRegistration(examId, examineeId, token, data) {
+        var docRef = App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId);
+        var snap = await docRef.get();
+        if (!snap.exists) throw new Error('not_found');
+        if (snap.data().selfEditToken !== token) throw new Error('invalid_token');
+
+        var allowed = [
+            'firstName', 'lastName', 'dateOfBirth', 'rank', 'club',
+            'trainingStartDate', 'lastExamDate', 'trainingsPerWeek',
+            'beltTrainings', 'gasshukuCount', 'photoUrl'
+        ];
+        var update = { selfEditToken: token };
+        allowed.forEach(function (k) {
+            if (data[k] !== undefined) update[k] = data[k];
+        });
+        update.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        await docRef.update(update);
     }
 
     // --- Copy Examinees ---
@@ -514,6 +550,181 @@ App.Storage = (function () {
         reader.readAsText(file);
     }
 
+    // --- Excel / CSV (students only) ---
+
+    // Columns used for both export and import. Keep in sync with the registration form.
+    var STUDENT_COLUMNS = [
+        'firstName', 'lastName', 'dateOfBirth', 'rank', 'club',
+        'trainingStartDate', 'lastExamDate', 'trainingsPerWeek',
+        'beltTrainings', 'gasshukuCount', 'examPayment',
+        'formSubmitted', 'theoryExamGrade'
+    ];
+
+    function buildStudentRows(exam) {
+        var header = STUDENT_COLUMNS.map(function (k) { return App.I18n.t(k); });
+        var rows = [header];
+        var examinees = Object.values(exam.examinees || {}).sort(function (a, b) {
+            return (a.order || 0) - (b.order || 0);
+        });
+        examinees.forEach(function (ex) {
+            rows.push(STUDENT_COLUMNS.map(function (k) {
+                var v = ex[k];
+                return v == null ? '' : String(v);
+            }));
+        });
+        return rows;
+    }
+
+    async function exportExamineesToExcel(examId) {
+        if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded');
+        var exam = await getExam(examId);
+        if (!exam) return;
+        var rows = buildStudentRows(exam);
+        var ws = XLSX.utils.aoa_to_sheet(rows);
+        // Right-to-left for Hebrew
+        ws['!rtl'] = true;
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Examinees');
+        XLSX.writeFile(wb, (exam.name || 'exam') + '-נבחנים.xlsx');
+    }
+
+    async function exportExamineesToCsv(examId) {
+        var exam = await getExam(examId);
+        if (!exam) return;
+        var rows = buildStudentRows(exam);
+        // Quote fields containing comma, quote, or newline; escape quotes by doubling.
+        var csv = rows.map(function (row) {
+            return row.map(function (val) {
+                var s = String(val == null ? '' : val);
+                if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+                return s;
+            }).join(',');
+        }).join('\r\n');
+        // UTF-8 BOM so Excel/Sheets render Hebrew correctly
+        var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (exam.name || 'exam') + '-נבחנים.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Simple CSV parser — handles quoted fields with embedded commas/newlines/quotes.
+    function parseCsv(text) {
+        // Strip BOM
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        var rows = [];
+        var row = [];
+        var field = '';
+        var inQuotes = false;
+        for (var i = 0; i < text.length; i++) {
+            var ch = text[i];
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (text[i + 1] === '"') { field += '"'; i++; }
+                    else { inQuotes = false; }
+                } else {
+                    field += ch;
+                }
+            } else {
+                if (ch === '"') { inQuotes = true; }
+                else if (ch === ',') { row.push(field); field = ''; }
+                else if (ch === '\r') { /* ignore */ }
+                else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                else { field += ch; }
+            }
+        }
+        // Flush final field/row
+        if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+        return rows;
+    }
+
+    // Imports examinees from .xlsx or .csv into the given exam.
+    // Expects first row to be headers matching either English keys (STUDENT_COLUMNS)
+    // or translated labels (via i18n). Unknown columns are ignored.
+    async function importExamineesFromFile(examId, file) {
+        var name = file.name.toLowerCase();
+        var rows;
+
+        if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+            if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded');
+            var buf = await file.arrayBuffer();
+            var wb = XLSX.read(buf, { type: 'array' });
+            var ws = wb.Sheets[wb.SheetNames[0]];
+            rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        } else if (name.endsWith('.csv')) {
+            var text = await file.text();
+            rows = parseCsv(text);
+        } else {
+            throw new Error('unsupported_format');
+        }
+
+        // Drop trailing empty rows
+        while (rows.length && rows[rows.length - 1].every(function (v) { return v === '' || v == null; })) {
+            rows.pop();
+        }
+        if (rows.length < 2) throw new Error('no_data');
+
+        // Build header → column-key map. Accept either raw English key or localized label.
+        var headers = rows[0].map(function (h) { return String(h || '').trim(); });
+        var labelToKey = {};
+        STUDENT_COLUMNS.forEach(function (k) {
+            labelToKey[k] = k;
+            labelToKey[App.I18n.t(k)] = k;
+        });
+        var colKeys = headers.map(function (h) { return labelToKey[h] || null; });
+        if (!colKeys.some(function (k) { return k === 'firstName'; })) {
+            throw new Error('missing_firstName_column');
+        }
+
+        // Fetch current max order so new rows append at the end
+        var examRef = App.db.collection('exams').doc(examId);
+        var existingSnap = await examRef.collection('examinees').get();
+        var maxOrder = -1;
+        existingSnap.docs.forEach(function (d) {
+            var o = d.data().order;
+            if (typeof o === 'number' && o > maxOrder) maxOrder = o;
+        });
+
+        var batch = App.db.batch();
+        var added = 0;
+        for (var r = 1; r < rows.length; r++) {
+            var row = rows[r];
+            // Skip fully empty rows
+            if (row.every(function (v) { return v === '' || v == null; })) continue;
+
+            var data = {};
+            STUDENT_COLUMNS.forEach(function (k) { data[k] = ''; });
+            colKeys.forEach(function (key, idx) {
+                if (key) data[key] = row[idx] == null ? '' : String(row[idx]).trim();
+            });
+            if (!data.firstName) continue;
+
+            var newRef = examRef.collection('examinees').doc();
+            batch.set(newRef, Object.assign({}, data, {
+                photoUrl: '',
+                order: maxOrder + 1 + added,
+                addedBy: 'imported',
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }));
+            added++;
+        }
+
+        if (added > 0) {
+            await batch.commit();
+            try {
+                await examRef.update({
+                    examineeCount: firebase.firestore.FieldValue.increment(added),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (e) { /* count cosmetic */ }
+        }
+        return added;
+    }
+
     return {
         getSettings: getSettings,
         saveSettings: saveSettings,
@@ -532,8 +743,13 @@ App.Storage = (function () {
         syncInvitationDoc: syncInvitationDoc,
         verifyInvitationCode: verifyInvitationCode,
         selfRegisterExaminee: selfRegisterExaminee,
+        getSelfRegistration: getSelfRegistration,
+        selfUpdateRegistration: selfUpdateRegistration,
         exportExam: exportExam,
         importExam: importExam,
+        exportExamineesToExcel: exportExamineesToExcel,
+        exportExamineesToCsv: exportExamineesToCsv,
+        importExamineesFromFile: importExamineesFromFile,
         copyExaminees: copyExaminees,
         updateCategoryOrder: updateCategoryOrder,
         updateCustomCategories: updateCustomCategories,

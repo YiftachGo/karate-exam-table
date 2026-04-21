@@ -125,7 +125,28 @@ App.I18n = (function () {
             formSubmitted: 'הגשת טופס',
             submitted: 'הוגש',
             notSubmitted: 'לא הוגש',
-            theoryExamGrade: 'ציון בחינה עיונית'
+            theoryExamGrade: 'ציון בחינה עיונית',
+            // Sort
+            sort: 'מיון',
+            sortExaminees: 'מיין נבחנים',
+            sortByFirstName: 'לפי שם פרטי',
+            sortByLastName: 'לפי שם משפחה',
+            sortByRank: 'לפי דרגה',
+            // Excel / CSV
+            exportToExcel: 'ייצוא ל-Excel',
+            exportToCsv: 'ייצוא ל-CSV',
+            exportJson: 'ייצוא JSON (גיבוי מלא)',
+            importStudents: 'ייבוא נבחנים',
+            studentsImported: 'הנבחנים יובאו בהצלחה',
+            invalidFileFormat: 'פורמט קובץ לא תקין',
+            // Student self-edit
+            editMyRegistration: 'ערוך את הרישום שלי',
+            continueEditing: 'המשך לערוך את הרישום',
+            yourEditLink: 'הקישור האישי שלך לעריכת הרישום',
+            saveEditLink: 'שמור קישור זה — תוכל לחזור אליו ולערוך את פרטיך בכל עת',
+            copyEditLink: 'העתק קישור',
+            saveChanges: 'שמור שינויים',
+            registrationUpdated: 'הרישום עודכן בהצלחה'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -250,7 +271,28 @@ App.I18n = (function () {
             formSubmitted: 'Form Submission',
             submitted: 'Submitted',
             notSubmitted: 'Not Submitted',
-            theoryExamGrade: 'Theory Exam Grade'
+            theoryExamGrade: 'Theory Exam Grade',
+            // Sort
+            sort: 'Sort',
+            sortExaminees: 'Sort Examinees',
+            sortByFirstName: 'By First Name',
+            sortByLastName: 'By Last Name',
+            sortByRank: 'By Rank',
+            // Excel / CSV
+            exportToExcel: 'Export to Excel',
+            exportToCsv: 'Export to CSV',
+            exportJson: 'Export JSON (full backup)',
+            importStudents: 'Import Students',
+            studentsImported: 'Students imported successfully',
+            invalidFileFormat: 'Invalid file format',
+            // Student self-edit
+            editMyRegistration: 'Edit My Registration',
+            continueEditing: 'Continue Editing My Registration',
+            yourEditLink: 'Your personal edit link',
+            saveEditLink: 'Save this link — you can return and edit your details any time',
+            copyEditLink: 'Copy Link',
+            saveChanges: 'Save Changes',
+            registrationUpdated: 'Registration updated successfully'
         }
     };
 

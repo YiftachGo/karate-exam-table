@@ -80,6 +80,9 @@ App.ExamTable = (function () {
             html += '<button class="btn btn-outline" id="btn-invite-examinees">' + t('inviteExaminees') + '</button>';
         }
         html += '<button class="btn btn-outline" id="btn-manage-categories">' + t('manageCategories') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-sort-examinees">' + t('sort') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-import-students">' + t('importStudents') + '</button>';
+        html += '<input type="file" id="import-students-file" accept=".xlsx,.csv,.json" style="display:none">';
         html += '<button class="btn btn-outline" id="btn-export-exam">' + t('export') + '</button>';
         html += '</div>';
 
@@ -365,12 +368,118 @@ App.ExamTable = (function () {
         var item = examinees.splice(fromIdx, 1)[0];
         examinees.splice(toIdx, 0, item);
 
-        // Update order fields
-        for (var i = 0; i < examinees.length; i++) {
-            if (examinees[i].order !== i) {
-                await App.Storage.updateExaminee(currentExamId, examinees[i].id, { order: i });
+        await applyExamineeOrder(examinees.map(function (e) { return e.id; }));
+    }
+
+    async function applyExamineeOrder(idsInOrder) {
+        for (var i = 0; i < idsInOrder.length; i++) {
+            var ex = cachedExaminees[idsInOrder[i]];
+            if (!ex) continue;
+            if (ex.order !== i) {
+                ex.order = i;
+                await App.Storage.updateExaminee(currentExamId, idsInOrder[i], { order: i });
             }
         }
+    }
+
+    // Build a rank → index map from the ordered RANK_GROUPS. Lower index = lower rank.
+    // Unranked students get Infinity (sorted last).
+    function getRankIndexMap() {
+        var map = {};
+        var idx = 0;
+        (App.Utils.RANK_GROUPS || []).forEach(function (group) {
+            group.ranks.forEach(function (rank) {
+                if (!(rank in map)) map[rank] = idx;
+                idx++;
+            });
+        });
+        return map;
+    }
+
+    async function sortExamineesByKey(key) {
+        var list = getSortedExaminees();
+        var rankMap = key === 'rank' ? getRankIndexMap() : null;
+        list.sort(function (a, b) {
+            var av, bv;
+            if (key === 'firstName') {
+                av = (a.firstName || '').trim();
+                bv = (b.firstName || '').trim();
+            } else if (key === 'lastName') {
+                av = (a.lastName || '').trim();
+                bv = (b.lastName || '').trim();
+            } else if (key === 'rank') {
+                av = rankMap[a.rank];
+                bv = rankMap[b.rank];
+                if (av === undefined) av = Infinity;
+                if (bv === undefined) bv = Infinity;
+                return av - bv;
+            }
+            // Empty strings last
+            if (!av && !bv) return 0;
+            if (!av) return 1;
+            if (!bv) return -1;
+            return av.localeCompare(bv, 'he');
+        });
+        await applyExamineeOrder(list.map(function (e) { return e.id; }));
+    }
+
+    function showExportModal() {
+        var t = App.I18n.t;
+        var modalContainer = document.getElementById('modal-container');
+        var html = '<div class="modal-overlay" id="export-overlay"><div class="modal">';
+        html += '<h2>' + t('export') + '</h2>';
+        html += '<div class="sort-options">';
+        html += '<button class="btn btn-outline btn-block" id="btn-export-excel">' + t('exportToExcel') + '</button>';
+        html += '<button class="btn btn-outline btn-block" id="btn-export-csv">' + t('exportToCsv') + '</button>';
+        html += '<button class="btn btn-outline btn-block" id="btn-export-json">' + t('exportJson') + '</button>';
+        html += '</div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-outline" id="btn-close-export">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        document.getElementById('btn-export-excel').addEventListener('click', async function () {
+            modalContainer.innerHTML = '';
+            try { await App.Storage.exportExamineesToExcel(currentExamId); }
+            catch (err) { alert(t('error') + ': ' + (err.message || err)); }
+        });
+        document.getElementById('btn-export-csv').addEventListener('click', async function () {
+            modalContainer.innerHTML = '';
+            try { await App.Storage.exportExamineesToCsv(currentExamId); }
+            catch (err) { alert(t('error') + ': ' + (err.message || err)); }
+        });
+        document.getElementById('btn-export-json').addEventListener('click', function () {
+            modalContainer.innerHTML = '';
+            App.Storage.exportExam(currentExamId);
+        });
+        document.getElementById('btn-close-export').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('export-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+    }
+
+    function showSortModal() {
+        var t = App.I18n.t;
+        var modalContainer = document.getElementById('modal-container');
+        var html = '<div class="modal-overlay" id="sort-overlay"><div class="modal">';
+        html += '<h2>' + t('sortExaminees') + '</h2>';
+        html += '<div class="sort-options">';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="firstName">' + t('sortByFirstName') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="lastName">' + t('sortByLastName') + '</button>';
+        html += '<button class="btn btn-outline btn-block sort-opt-btn" data-key="rank">' + t('sortByRank') + '</button>';
+        html += '</div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-outline" id="btn-close-sort">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        document.querySelectorAll('.sort-opt-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                modalContainer.innerHTML = '';
+                await sortExamineesByKey(btn.dataset.key);
+                renderTable();
+            });
+        });
+        document.getElementById('btn-close-sort').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('sort-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
     }
 
     async function reorderCategories(fromKey, toKey) {
@@ -498,12 +607,36 @@ App.ExamTable = (function () {
             showAddExamineeModal();
         });
 
-        document.getElementById('btn-export-exam').addEventListener('click', function () {
-            App.Storage.exportExam(currentExamId);
-        });
+        document.getElementById('btn-export-exam').addEventListener('click', showExportModal);
 
         document.getElementById('btn-copy-examinees').addEventListener('click', showCopyExamineesModal);
         document.getElementById('btn-manage-categories').addEventListener('click', showManageCategoriesModal);
+        document.getElementById('btn-sort-examinees').addEventListener('click', showSortModal);
+
+        document.getElementById('btn-import-students').addEventListener('click', function () {
+            document.getElementById('import-students-file').click();
+        });
+        document.getElementById('import-students-file').addEventListener('change', async function (e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            e.target.value = ''; // reset so same file can be reselected later
+            var lower = file.name.toLowerCase();
+            try {
+                App.showToast(t('loading'));
+                if (lower.endsWith('.json')) {
+                    await new Promise(function (resolve, reject) {
+                        App.Storage.importExam(file, function (err) { err ? reject(err) : resolve(); });
+                    });
+                } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
+                    await App.Storage.importExamineesFromFile(currentExamId, file);
+                    App.showToast(t('studentsImported'));
+                } else {
+                    alert(t('invalidFileFormat'));
+                }
+            } catch (err) {
+                alert(t('error') + ': ' + (err.message || err));
+            }
+        });
 
         var shareBtn = document.getElementById('btn-share-exam');
         if (shareBtn) {
