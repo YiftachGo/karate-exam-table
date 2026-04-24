@@ -55,6 +55,7 @@ App.ExamineeDetail = (function () {
         html += '</div>';
 
         html += App.Utils.buildRankSelect('field-rank', ex.rank, t('rank'));
+        html += App.Utils.buildRankSelect('field-targetRank', ex.targetRank, t('targetRank'));
         html += clubSelectGroup(t('club'), ex.club || '');
 
         html += '<div class="form-row">';
@@ -67,7 +68,14 @@ App.ExamineeDetail = (function () {
         // Prerequisites section
         html += '<div class="prerequisites-section">';
         html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
-        html += formGroup('gasshukuCount', t('gasshukuCount'), 'number', ex.gasshukuCount);
+
+        // Gasshuku list (structured entries: location + date)
+        html += '<div class="form-group">';
+        html += '<label>' + t('gasshukusSinceLastExam') + '</label>';
+        html += '<p class="field-explanation">' + t('gasshukusExplanation') + '</p>';
+        html += '<div id="gasshuku-list"></div>';
+        html += '<button type="button" class="btn btn-sm btn-outline" id="btn-add-gasshuku">+ ' + t('addGasshuku') + '</button>';
+        html += '</div>';
 
         html += '<div class="form-group">';
         html += '<label>' + t('examPayment') + '</label>';
@@ -110,6 +118,11 @@ App.ExamineeDetail = (function () {
         html += '</div>';
 
         container.innerHTML = html;
+        App.Utils.renderGasshukuList(
+            document.getElementById('gasshuku-list'),
+            document.getElementById('btn-add-gasshuku'),
+            ex.gasshukus || []
+        );
         bindEvents(examId, examineeId);
     }
 
@@ -199,12 +212,13 @@ App.ExamineeDetail = (function () {
             lastName: document.getElementById('field-lastName').value.trim(),
             dateOfBirth: document.getElementById('field-dateOfBirth').value,
             rank: document.getElementById('field-rank').value,
+            targetRank: document.getElementById('field-targetRank').value,
             club: document.getElementById('field-club').value.trim(),
             trainingStartDate: document.getElementById('field-trainingStartDate').value,
             lastExamDate: document.getElementById('field-lastExamDate').value,
             trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value,
             beltTrainings: document.getElementById('field-beltTrainings').value,
-            gasshukuCount: document.getElementById('field-gasshukuCount').value,
+            gasshukus: App.Utils.readGasshukuList(document.getElementById('gasshuku-list')),
             examPayment: document.getElementById('field-examPayment').value,
             formSubmitted: document.getElementById('field-formSubmitted').value,
             theoryExamGrade: document.getElementById('field-theoryExamGrade').value.trim()

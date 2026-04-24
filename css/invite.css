@@ -113,3 +113,65 @@
 .trainer-text {
     color: var(--text);
 }
+
+/* Required-field marker */
+.required-star {
+    color: #c62828;
+    font-weight: 700;
+}
+
+/* Invalid-field highlight */
+.field-invalid,
+.field-invalid input,
+.field-invalid select {
+    border-color: #c62828 !important;
+    box-shadow: 0 0 0 2px rgba(198, 40, 40, 0.15);
+}
+
+#reg-photo-preview.field-invalid {
+    outline: 2px solid #c62828;
+    outline-offset: 4px;
+}
+
+#gasshuku-list.field-invalid {
+    background: rgba(198, 40, 40, 0.04);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+}
+
+.field-explanation {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 4px 0 10px 0;
+}
+
+.photo-label-required {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+/* Gasshuku list rows */
+.gasshuku-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.gasshuku-row .gasshuku-location {
+    flex: 2;
+    min-width: 0;
+}
+
+.gasshuku-row .gasshuku-date {
+    flex: 1;
+    min-width: 0;
+}
+
+.gasshuku-row .gasshuku-remove-btn {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+}

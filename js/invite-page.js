@@ -109,8 +109,9 @@ App.InvitePage = (function () {
         html += '<h2>' + titleHeader + '</h2>';
         html += '<p class="invite-subtitle">' + subtitle + '</p>';
 
-        // Photo upload
+        // Photo upload (REQUIRED — marked with asterisk)
         html += '<div class="photo-section">';
+        html += '<label class="photo-label-required">' + t('uploadPhoto') + ' <span class="required-star">*</span></label>';
         if (prefill.photoUrl) {
             html += '<div class="photo-placeholder" id="reg-photo-preview"><img src="' + prefill.photoUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>';
         } else {
@@ -129,23 +130,31 @@ App.InvitePage = (function () {
         html += '</div>';
 
         html += '<div class="form-row">';
-        html += regField('dateOfBirth', t('dateOfBirth'), 'date', false, prefill.dateOfBirth);
-        html += App.Utils.buildRankSelect('reg-rank', prefill.rank || '', t('rank'));
+        html += regField('dateOfBirth', t('dateOfBirth'), 'date', true, prefill.dateOfBirth);
+        html += App.Utils.buildRankSelect('reg-rank', prefill.rank || '', t('rank') + ' *');
         html += '</div>';
 
-        html += regClubSelect(t('club'), prefill.club);
+        html += regClubSelect(t('club') + ' *', prefill.club);
 
         html += '<div class="form-row">';
-        html += regField('trainingStartDate', t('trainingStartDate'), 'date', false, prefill.trainingStartDate);
-        html += regField('lastExamDate', t('lastExamDate'), 'date', false, prefill.lastExamDate);
+        html += regField('trainingStartDate', t('trainingStartDate'), 'date', true, prefill.trainingStartDate);
+        html += regField('lastExamDate', t('lastExamDate'), 'date', true, prefill.lastExamDate);
         html += '</div>';
 
-        html += regField('trainingsPerWeek', t('trainingsPerWeek'), 'number', false, prefill.trainingsPerWeek);
+        html += regField('trainingsPerWeek', t('trainingsPerWeek'), 'number', true, prefill.trainingsPerWeek);
 
         // Prerequisites
         html += '<div class="prerequisites-section">';
         html += '<h3 class="section-title">' + t('prerequisites') + '</h3>';
-        html += regField('gasshukuCount', t('gasshukuCount'), 'number', false, prefill.gasshukuCount);
+
+        // Gasshukus as structured list (at least one required) — rows populated after mount
+        html += '<div class="form-group">';
+        html += '<label>' + t('gasshukusSinceLastExam') + ' <span class="required-star">*</span></label>';
+        html += '<p class="field-explanation">' + t('gasshukusExplanation') + '</p>';
+        html += '<div id="gasshuku-list"></div>';
+        html += '<button type="button" class="btn btn-sm btn-outline" id="btn-add-gasshuku">+ ' + t('addGasshuku') + '</button>';
+        html += '</div>';
+
         html += '<div class="shodan-subsection">';
         html += '<h4 class="subsection-title">' + t('shodanAndAbove') + '</h4>';
         html += regField('beltTrainings', t('beltTrainings'), 'number', false, prefill.beltTrainings);
@@ -164,6 +173,8 @@ App.InvitePage = (function () {
         return html;
     }
 
+    // Gasshuku list UI is owned by App.Utils.renderGasshukuList / readGasshukuList.
+
     function readFormData() {
         return {
             firstName: document.getElementById('reg-firstName').value.trim(),
@@ -175,14 +186,28 @@ App.InvitePage = (function () {
             lastExamDate: document.getElementById('reg-lastExamDate').value,
             trainingsPerWeek: document.getElementById('reg-trainingsPerWeek').value,
             beltTrainings: document.getElementById('reg-beltTrainings').value,
-            gasshukuCount: document.getElementById('reg-gasshukuCount').value
+            gasshukus: App.Utils.readGasshukuList(document.getElementById('gasshuku-list'))
         };
     }
 
+    // Required fields validated before submission. Photo is validated separately
+    // because it's either a prefilled URL (edit flow) or a freshly selected file.
+    var REQUIRED_FIELDS = [
+        'firstName', 'lastName', 'dateOfBirth', 'rank', 'club',
+        'trainingStartDate', 'lastExamDate', 'trainingsPerWeek'
+    ];
+
     // `onPhotoSelected(file)` returns a Promise<string> with the final photoUrl to store.
-    function bindPhotoAndSubmit(onPhotoSelected, onSubmit, submitLabel) {
+    // `existingPhotoUrl` lets us skip the photo requirement in edit mode if a photo is already on file.
+    function bindPhotoAndSubmit(onPhotoSelected, onSubmit, submitLabel, existingPhotoUrl, initialGasshukus) {
         var t = App.I18n.t;
         var selectedPhotoFile = null;
+
+        App.Utils.renderGasshukuList(
+            document.getElementById('gasshuku-list'),
+            document.getElementById('btn-add-gasshuku'),
+            initialGasshukus || []
+        );
 
         document.getElementById('reg-photo-input').addEventListener('change', function (e) {
             var file = e.target.files[0];
@@ -202,8 +227,49 @@ App.InvitePage = (function () {
             errorEl.style.display = 'none';
 
             var data = readFormData();
-            if (!data.firstName) {
+
+            // Clear previous invalid highlights
+            document.querySelectorAll('.field-invalid').forEach(function (el) { el.classList.remove('field-invalid'); });
+
+            // Check all required fields
+            var missing = [];
+            REQUIRED_FIELDS.forEach(function (key) {
+                var el = document.getElementById('reg-' + key);
+                var val = (data[key] == null ? '' : String(data[key])).trim();
+                if (!val) {
+                    missing.push(key);
+                    if (el) el.classList.add('field-invalid');
+                }
+            });
+
+            // Photo check — must have either an existing URL or a newly selected file
+            var hasPhoto = !!existingPhotoUrl || !!selectedPhotoFile;
+            if (!hasPhoto) {
+                var photoPreview = document.getElementById('reg-photo-preview');
+                if (photoPreview) photoPreview.classList.add('field-invalid');
+            }
+
+            // Gasshuku check — at least one entry with location + date
+            if (!data.gasshukus.length ||
+                !data.gasshukus.some(function (g) { return g.location && g.date; })) {
+                var gList = document.getElementById('gasshuku-list');
+                if (gList) gList.classList.add('field-invalid');
+            }
+
+            // Error summary
+            if (!hasPhoto) {
+                errorEl.textContent = t('photoRequired');
+                errorEl.style.display = '';
+                return;
+            }
+            if (missing.length) {
                 errorEl.textContent = t('fillAllFields');
+                errorEl.style.display = '';
+                return;
+            }
+            if (!data.gasshukus.length ||
+                !data.gasshukus.some(function (g) { return g.location && g.date; })) {
+                errorEl.textContent = t('atLeastOneGasshuku');
                 errorEl.style.display = '';
                 return;
             }
@@ -249,7 +315,9 @@ App.InvitePage = (function () {
                 savePriorRegistration(currentExamId, result.id, result.selfEditToken);
                 showSuccess(result.id, result.selfEditToken);
             },
-            t('submitRegistration')
+            t('submitRegistration'),
+            null, // no existing photo for fresh registration
+            []
         );
     }
 
@@ -294,7 +362,9 @@ App.InvitePage = (function () {
                 // Re-render to reflect saved values
                 renderEdit(examId, examineeId, token);
             },
-            t('saveChanges')
+            t('saveChanges'),
+            ex.photoUrl || null,
+            ex.gasshukus || []
         );
     }
 
@@ -326,7 +396,7 @@ App.InvitePage = (function () {
     function regField(name, label, type, required, value) {
         var val = value != null ? String(value) : '';
         var html = '<div class="form-group">';
-        html += '<label>' + label + (required ? ' *' : '') + '</label>';
+        html += '<label>' + label + (required ? ' <span class="required-star">*</span>' : '') + '</label>';
         html += '<input type="' + type + '" id="reg-' + name + '" value="' + App.Utils.escapeHtml(val) + '"';
         if (type === 'number') html += ' min="0" max="20"';
         html += '>';

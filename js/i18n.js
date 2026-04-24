@@ -147,7 +147,62 @@ App.I18n = (function () {
             saveEditLink: 'שמור קישור זה — תוכל לחזור אליו ולערוך את פרטיך בכל עת',
             copyEditLink: 'העתק קישור',
             saveChanges: 'שמור שינויים',
-            registrationUpdated: 'הרישום עודכן בהצלחה'
+            registrationUpdated: 'הרישום עודכן בהצלחה',
+            // Required-field feedback
+            photoRequired: 'חובה להעלות תמונה',
+            requiredField: 'שדה חובה',
+            atLeastOneGasshuku: 'יש להוסיף לפחות גשוקו אחד',
+            // Rename exam
+            renameExam: 'שנה שם המבחן',
+            newExamName: 'שם חדש למבחן',
+            // Bulk delete
+            deleteSelected: 'מחק נבחרים',
+            noCategoriesSelected: 'לא נבחרו קטגוריות',
+            confirmDeleteSelectedCategories: 'למחוק את הקטגוריות שנבחרו?',
+            // Target rank (on student card)
+            targetRank: 'נבחן לדרגה',
+            // Gasshuku list
+            gasshukusSinceLastExam: 'גשוקואים מאז המבחן האחרון',
+            gasshukusExplanation: 'רשום את כל הגשוקואים בהם נכחת מאז המבחן האחרון',
+            addGasshuku: 'הוסף גשוקו',
+            gasshukuLocation: 'מיקום',
+            gasshukuDate: 'תאריך',
+            removeGasshuku: 'הסר',
+            // Competence marks (V / ? / X)
+            competenceV: 'תקין',
+            competenceQ: 'לשיפור',
+            competenceX: 'בעייתי',
+            // New rank on pass/conditional
+            newRank: 'דרגה חדשה',
+            // General exam remarks
+            generalRemarks: 'הערות כלליות למבחן',
+            yourRemarks: 'ההערות שלי',
+            othersRemarks: 'הערות מאמנים אחרים',
+            noRemarks: 'אין הערות',
+            // Undo
+            undo: 'בטל',
+            examineeDeleted: 'הנבחן הוסר',
+            categoryDeleted: 'הקטגוריה נמחקה',
+            categoriesDeleted: 'הקטגוריות נמחקו',
+            examDeleted: 'המבחן נמחק',
+            // Draft / private mode
+            privateMode: 'טיוטה פרטית',
+            publishedMode: 'מפורסם',
+            publishDraft: 'פרסם טיוטה',
+            draftPublished: 'הטיוטה פורסמה',
+            switchToPrivate: 'עבור למצב טיוטה',
+            switchToPublished: 'פרסם ועבור למצב ציבורי',
+            draftPendingCount: '{n} הערות ממתינות לפרסום',
+            // Category presets
+            categoryPresets: 'תבניות קטגוריות',
+            saveAsPreset: 'שמור כתבנית',
+            loadPreset: 'טען תבנית',
+            presetName: 'שם התבנית',
+            presetSaved: 'התבנית נשמרה',
+            presetLoaded: 'התבנית נטענה',
+            deletePreset: 'מחק תבנית',
+            confirmDeletePreset: 'למחוק תבנית זו?',
+            noPresets: 'אין תבניות שמורות'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -294,7 +349,57 @@ App.I18n = (function () {
             saveEditLink: 'Save this link — you can return and edit your details any time',
             copyEditLink: 'Copy Link',
             saveChanges: 'Save Changes',
-            registrationUpdated: 'Registration updated successfully'
+            registrationUpdated: 'Registration updated successfully',
+            photoRequired: 'A photo is required',
+            requiredField: 'Required',
+            atLeastOneGasshuku: 'At least one gasshuku is required',
+            renameExam: 'Rename Exam',
+            newExamName: 'New exam name',
+            deleteSelected: 'Delete Selected',
+            noCategoriesSelected: 'No categories selected',
+            confirmDeleteSelectedCategories: 'Delete the selected categories?',
+            targetRank: 'Testing for Rank',
+            gasshukusSinceLastExam: 'Gasshukus since last exam',
+            gasshukusExplanation: 'List all gasshukus you attended since your last exam',
+            addGasshuku: 'Add Gasshuku',
+            gasshukuLocation: 'Location',
+            gasshukuDate: 'Date',
+            removeGasshuku: 'Remove',
+            // Competence marks (V / ? / X)
+            competenceV: 'Good',
+            competenceQ: 'Needs Work',
+            competenceX: 'Problem',
+            // New rank on pass/conditional
+            newRank: 'New Rank',
+            // General exam remarks
+            generalRemarks: 'General Exam Remarks',
+            yourRemarks: 'My Remarks',
+            othersRemarks: 'Other Trainers\' Remarks',
+            noRemarks: 'No remarks',
+            // Undo
+            undo: 'Undo',
+            examineeDeleted: 'Examinee removed',
+            categoryDeleted: 'Category deleted',
+            categoriesDeleted: 'Categories deleted',
+            examDeleted: 'Exam deleted',
+            // Draft / private mode
+            privateMode: 'Private Draft',
+            publishedMode: 'Published',
+            publishDraft: 'Publish Draft',
+            draftPublished: 'Draft published',
+            switchToPrivate: 'Switch to Draft Mode',
+            switchToPublished: 'Publish and go Public',
+            draftPendingCount: '{n} notes pending publish',
+            // Category presets
+            categoryPresets: 'Category Presets',
+            saveAsPreset: 'Save as Preset',
+            loadPreset: 'Load Preset',
+            presetName: 'Preset Name',
+            presetSaved: 'Preset saved',
+            presetLoaded: 'Preset loaded',
+            deletePreset: 'Delete Preset',
+            confirmDeletePreset: 'Delete this preset?',
+            noPresets: 'No saved presets'
         }
     };
 

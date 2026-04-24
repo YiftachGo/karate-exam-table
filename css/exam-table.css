@@ -407,3 +407,122 @@ thead .sticky-col {
         display: none !important;
     }
 }
+
+/* Competence mark buttons (V / ? / X) */
+.competence-marks {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.comp-btn {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 2px 0;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    font-family: inherit;
+}
+
+.comp-btn.comp-v { color: #2e7d32; }
+.comp-btn.comp-v.active { background: #2e7d32; color: white; border-color: #2e7d32; }
+.comp-btn.comp-q { color: #e65100; }
+.comp-btn.comp-q.active { background: #e65100; color: white; border-color: #e65100; }
+.comp-btn.comp-x { color: #c62828; }
+.comp-btn.comp-x.active { background: #c62828; color: white; border-color: #c62828; }
+
+/* Competence badge shown in other-trainer-note */
+.comp-badge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+    margin-inline-end: 4px;
+}
+.comp-badge-v { background: #e8f5e9; color: #2e7d32; }
+.comp-badge-q { background: #fff3e0; color: #e65100; }
+.comp-badge-x { background: #ffebee; color: #c62828; }
+
+/* New rank dropdown in pass/fail cell */
+.newrank-wrapper {
+    margin-top: 6px;
+}
+.newrank-wrapper.hidden { display: none; }
+.newrank-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 2px;
+}
+.newrank-select {
+    width: 100%;
+    font-size: 0.82rem;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    font-family: inherit;
+}
+
+/* Category management modal */
+.cat-mgr-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    margin-bottom: 12px;
+}
+
+.cat-mgr-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.cat-mgr-row:last-child {
+    border-bottom: none;
+}
+
+.cat-mgr-header {
+    background: var(--bg);
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.cat-mgr-checkbox,
+.cat-mgr-selectall {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.cat-mgr-checkbox {
+    flex: 0 0 auto;
+}
+
+.cat-mgr-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cat-mgr-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+}
+

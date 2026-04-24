@@ -115,6 +115,81 @@ App.Storage = (function () {
         await App.db.collection('exams').doc(examId).delete();
     }
 
+    // Restores a previously deleted exam document (subcollections were never deleted).
+    // Used by the undo toast after exam deletion.
+    async function restoreExam(examId, data) {
+        var payload = Object.assign({}, data);
+        delete payload.id;
+        delete payload.examinees;
+        delete payload.allGrades;
+        await App.db.collection('exams').doc(examId).set(payload);
+    }
+
+    // Restores a previously deleted examinee document with its original ID.
+    // Grades subcollection docs survive deletion so they come back automatically.
+    async function restoreExaminee(examId, examineeId, data) {
+        var payload = Object.assign({}, data);
+        delete payload.id;
+        await App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId).set(payload);
+    }
+
+    // --- General exam remarks (per trainer, stored in grades subcollection) ---
+    // Doc ID: '__general__' + trainerId  Field: 'general_remarks'
+
+    async function saveGeneralRemarks(examId, text) {
+        var trainerId = App.Auth.getUserId();
+        var trainerName = App.Auth.getUserName();
+        var docRef = App.db.collection('exams').doc(examId)
+            .collection('grades').doc('__general__' + trainerId);
+        await docRef.set({
+            trainerId: trainerId,
+            trainerName: trainerName,
+            general_remarks: text,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    }
+
+    // Returns {[trainerId]: {name, text}} for all trainers who wrote remarks.
+    async function getGeneralRemarks(examId) {
+        var snap = await App.db.collection('exams').doc(examId)
+            .collection('grades')
+            .where(firebase.firestore.FieldPath.documentId(), '>=', '__general__')
+            .where(firebase.firestore.FieldPath.documentId(), '<', '__general__\uffff')
+            .get();
+        var result = {};
+        snap.docs.forEach(function (d) {
+            var data = d.data();
+            result[data.trainerId] = { name: data.trainerName || data.trainerId, text: data.general_remarks || '' };
+        });
+        return result;
+    }
+
+    // --- Category presets (global Firestore collection) ---
+
+    async function savePreset(name, categoryOrder, customCategories) {
+        var userId = App.Auth.getUserId();
+        var userName = App.Auth.getUserName();
+        await App.db.collection('categoryPresets').add({
+            name: name,
+            categoryOrder: categoryOrder,
+            customCategories: customCategories || {},
+            createdBy: userId,
+            createdByName: userName,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
+    async function getPresets() {
+        var snap = await App.db.collection('categoryPresets')
+            .orderBy('createdAt', 'desc').get();
+        return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+    }
+
+    async function deletePreset(presetId) {
+        await App.db.collection('categoryPresets').doc(presetId).delete();
+    }
+
     async function addExaminee(examId, firstName, lastName, rank) {
         var examRef = App.db.collection('exams').doc(examId);
         var examineeRef = examRef.collection('examinees').doc();
@@ -126,12 +201,13 @@ App.Storage = (function () {
             lastName: lastName,
             dateOfBirth: '',
             rank: rank || '',
+            targetRank: '',
             club: '',
             trainingStartDate: '',
             lastExamDate: '',
             trainingsPerWeek: '',
             beltTrainings: '',
-            gasshukuCount: '',
+            gasshukus: [],
             examPayment: '',
             photoUrl: '',
             order: currentCount,
@@ -334,12 +410,13 @@ App.Storage = (function () {
             lastName: data.lastName,
             dateOfBirth: data.dateOfBirth || '',
             rank: data.rank || '',
+            targetRank: data.targetRank || '',
             club: data.club || '',
             trainingStartDate: data.trainingStartDate || '',
             lastExamDate: data.lastExamDate || '',
             trainingsPerWeek: data.trainingsPerWeek || '',
             beltTrainings: data.beltTrainings || '',
-            gasshukuCount: data.gasshukuCount || '',
+            gasshukus: Array.isArray(data.gasshukus) ? data.gasshukus : [],
             examPayment: data.examPayment || '',
             photoUrl: data.photoUrl || '',
             order: 0,
@@ -384,7 +461,7 @@ App.Storage = (function () {
         var allowed = [
             'firstName', 'lastName', 'dateOfBirth', 'rank', 'club',
             'trainingStartDate', 'lastExamDate', 'trainingsPerWeek',
-            'beltTrainings', 'gasshukuCount', 'photoUrl'
+            'beltTrainings', 'gasshukus', 'photoUrl'
         ];
         var update = { selfEditToken: token };
         allowed.forEach(function (k) {
@@ -415,12 +492,13 @@ App.Storage = (function () {
                 lastName: ex.lastName || '',
                 dateOfBirth: ex.dateOfBirth || '',
                 rank: ex.rank || '',
+                targetRank: ex.targetRank || '',
                 club: ex.club || '',
                 trainingStartDate: ex.trainingStartDate || '',
                 lastExamDate: ex.lastExamDate || '',
                 trainingsPerWeek: ex.trainingsPerWeek || '',
                 beltTrainings: ex.beltTrainings || '',
-                gasshukuCount: ex.gasshukuCount || '',
+                gasshukus: Array.isArray(ex.gasshukus) ? ex.gasshukus : [],
                 examPayment: ex.examPayment || '',
                 photoUrl: ex.photoUrl || '',
                 order: currentCount + addedCount,
@@ -725,13 +803,29 @@ App.Storage = (function () {
         return added;
     }
 
+    // Thin wrapper for top-level exam field updates (e.g. renaming).
+    async function updateExam(examId, data) {
+        var payload = Object.assign({}, data, {
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await App.db.collection('exams').doc(examId).update(payload);
+    }
+
     return {
         getSettings: getSettings,
         saveSettings: saveSettings,
         getExamIndex: getExamIndex,
         getExam: getExam,
         createExam: createExam,
+        updateExam: updateExam,
         deleteExam: deleteExam,
+        restoreExam: restoreExam,
+        restoreExaminee: restoreExaminee,
+        saveGeneralRemarks: saveGeneralRemarks,
+        getGeneralRemarks: getGeneralRemarks,
+        savePreset: savePreset,
+        getPresets: getPresets,
+        deletePreset: deletePreset,
         addExaminee: addExaminee,
         removeExaminee: removeExaminee,
         updateExaminee: updateExaminee,

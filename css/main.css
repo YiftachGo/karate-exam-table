@@ -351,6 +351,41 @@ input:focus, select:focus, textarea:focus {
     opacity: 1;
 }
 
+/* Undo toast — has a clickable button inline */
+.toast-undo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    pointer-events: all;
+    padding: 10px 20px;
+}
+
+.btn-undo-inline {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.7);
+    color: white;
+    border-radius: var(--radius-sm);
+    padding: 3px 10px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+.btn-undo-inline:hover {
+    background: rgba(255,255,255,0.15);
+}
+
+/* Warning / draft button */
+.btn-warning {
+    background: #e65100;
+    color: white;
+}
+.btn-warning:hover {
+    background: #bf360c;
+}
+
 @media print {
     #app-header {
         position: static;

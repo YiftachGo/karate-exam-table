@@ -14,6 +14,41 @@ App.ExamTable = (function () {
     var dragType = null; // 'category' or 'examinee'
     var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
+    // --- Draft / private mode helpers ---
+
+    function renderDraftToggle() {
+        if (!currentExamId) return '';
+        var t = App.I18n.t;
+        var userId = App.Auth.getUserId();
+        var priv = App.Draft.isPrivate(currentExamId);
+        var pending = App.Draft.pendingCount(currentExamId, userId);
+        var label = priv
+            ? ('🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : ''))
+            : ('🔓 ' + t('publishedMode'));
+        var cls = priv ? 'btn btn-warning' : 'btn btn-outline';
+        return '<button class="' + cls + '" id="btn-draft-toggle">' + label + '</button>';
+    }
+
+    // Routes a grade save to localStorage (draft) or Firestore depending on current mode.
+    function saveGrade(examineeId, catKey, value) {
+        var userId = App.Auth.getUserId();
+        if (App.Draft.isPrivate(currentExamId)) {
+            App.Draft.setGrade(currentExamId, userId, examineeId, catKey, value);
+            updateDraftBadge();
+        } else {
+            App.Storage.updateGrade(currentExamId, examineeId, catKey, value);
+        }
+    }
+
+    function updateDraftBadge() {
+        var btn = document.getElementById('btn-draft-toggle');
+        if (!btn) return;
+        var t = App.I18n.t;
+        var userId = App.Auth.getUserId();
+        var pending = App.Draft.pendingCount(currentExamId, userId);
+        btn.textContent = '🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : '');
+    }
+
     async function render(examId) {
         currentExamId = examId;
         var container = document.getElementById('app');
@@ -31,7 +66,7 @@ App.ExamTable = (function () {
         customCategories = cachedExam.customCategories || {};
 
         autoSave = App.Utils.debounce(function (examineeId, catKey, value) {
-            App.Storage.updateGrade(currentExamId, examineeId, catKey, value);
+            saveGrade(examineeId, catKey, value);
         }, 300);
 
         renderTable();
@@ -81,9 +116,11 @@ App.ExamTable = (function () {
         }
         html += '<button class="btn btn-outline" id="btn-manage-categories">' + t('manageCategories') + '</button>';
         html += '<button class="btn btn-outline" id="btn-sort-examinees">' + t('sort') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-general-remarks">' + t('generalRemarks') + '</button>';
         html += '<button class="btn btn-outline" id="btn-import-students">' + t('importStudents') + '</button>';
         html += '<input type="file" id="import-students-file" accept=".xlsx,.csv,.json" style="display:none">';
         html += '<button class="btn btn-outline" id="btn-export-exam">' + t('export') + '</button>';
+        html += renderDraftToggle();
         html += '</div>';
 
         if (examinees.length === 0) {
@@ -153,25 +190,53 @@ App.ExamTable = (function () {
 
     function renderGradeCell(examineeId, catKey, currentUserId, otherTrainers, trainerNames) {
         var html = '';
+        var t = App.I18n.t;
         var exGrades = cachedGrades[examineeId] || {};
 
+        // Other trainers' notes and marks
         otherTrainers.forEach(function (tid) {
             var tGrades = exGrades[tid];
             var val = tGrades ? (tGrades[catKey] || '') : '';
-            if (val) {
+            var mark = tGrades ? (tGrades[catKey + '_mark'] || '') : '';
+            if (val || mark) {
                 var name = (tGrades && tGrades.trainerName) || trainerNames[tid] || tid.slice(0, 6);
                 html += '<div class="other-trainer-note">';
                 html += '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span>';
-                html += '<span class="trainer-text">' + App.Utils.escapeHtml(val) + '</span>';
+                if (mark) html += '<span class="comp-badge comp-badge-' + mark + '">' + _markLabel(mark) + '</span> ';
+                if (val) html += '<span class="trainer-text">' + App.Utils.escapeHtml(val) + '</span>';
                 html += '</div>';
             }
         });
 
+        // My competence mark buttons
         var myGrades = exGrades[currentUserId];
+        var myMark = myGrades ? (myGrades[catKey + '_mark'] || '') : '';
         var myVal = myGrades ? (myGrades[catKey] || '') : '';
-        html += '<textarea class="grade-textarea" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + App.I18n.t('enterNotes') + '">' + App.Utils.escapeHtml(myVal) + '</textarea>';
+
+        // Check draft overlay
+        var draftData = App.Draft && App.Draft.isPrivate(currentExamId)
+            ? (App.Draft.getDraft(currentExamId, currentUserId)[examineeId] || {})
+            : {};
+        if (draftData[catKey] !== undefined) myVal = draftData[catKey];
+        if (draftData[catKey + '_mark'] !== undefined) myMark = draftData[catKey + '_mark'];
+
+        html += '<div class="competence-marks" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
+        html += '<button class="comp-btn comp-v' + (myMark === 'v' ? ' active' : '') + '" data-mark="v" title="' + t('competenceV') + '">✓</button>';
+        html += '<button class="comp-btn comp-q' + (myMark === 'q' ? ' active' : '') + '" data-mark="q" title="' + t('competenceQ') + '">?</button>';
+        html += '<button class="comp-btn comp-x' + (myMark === 'x' ? ' active' : '') + '" data-mark="x" title="' + t('competenceX') + '">✗</button>';
+        html += '</div>';
+
+        html += '<textarea class="grade-textarea" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterNotes') + '">' + App.Utils.escapeHtml(myVal) + '</textarea>';
 
         return html;
+    }
+
+    function _markLabel(mark) {
+        var t = App.I18n.t;
+        if (mark === 'v') return '✓ ' + t('competenceV');
+        if (mark === 'q') return '? ' + t('competenceQ');
+        if (mark === 'x') return '✗ ' + t('competenceX');
+        return mark;
     }
 
     function renderPassFailCell(examineeId, catKey, currentUserId, otherTrainers, trainerNames) {
@@ -208,14 +273,32 @@ App.ExamTable = (function () {
         // Current user's selection
         var myGrades = exGrades[currentUserId];
         var myVal = myGrades ? (myGrades[catKey] || '') : '';
+        var myNewRank = myGrades ? (myGrades[catKey + '_newRank'] || '') : '';
         var isMyConditional = myVal.indexOf('conditional:') === 0;
         var myConditionText = isMyConditional ? myVal.substring(12) : '';
+        var showNewRank = (myVal === 'pass' || isMyConditional);
+
         html += '<div class="passfail-selector" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
         html += '<button class="pf-btn pf-pass' + (myVal === 'pass' ? ' active' : '') + '" data-value="pass">' + t('pass') + '</button>';
         html += '<button class="pf-btn pf-fail' + (myVal === 'fail' ? ' active' : '') + '" data-value="fail">' + t('fail') + '</button>';
         html += '<button class="pf-btn pf-conditional' + (isMyConditional ? ' active' : '') + '" data-value="conditional">' + t('conditionalPass') + '</button>';
         html += '</div>';
         html += '<textarea class="condition-input' + (isMyConditional ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterCondition') + '">' + App.Utils.escapeHtml(myConditionText) + '</textarea>';
+
+        // New rank dropdown — visible only when pass or conditional is active
+        html += '<div class="newrank-wrapper' + (showNewRank ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
+        html += '<label class="newrank-label">' + t('newRank') + '</label>';
+        html += '<select class="newrank-select">';
+        html += '<option value=""></option>';
+        App.Utils.RANK_GROUPS.forEach(function (group) {
+            html += '<optgroup label="' + App.Utils.escapeHtml(group.label) + '">';
+            group.ranks.forEach(function (rank) {
+                html += '<option value="' + App.Utils.escapeHtml(rank) + '"' + (myNewRank === rank ? ' selected' : '') + '>' + App.Utils.escapeHtml(rank) + '</option>';
+            });
+            html += '</optgroup>';
+        });
+        html += '</select>';
+        html += '</div>';
 
         return html;
     }
@@ -267,12 +350,23 @@ App.ExamTable = (function () {
                 }
             });
 
+            // Update my textarea (skip if focused — don't interrupt typing)
+            var myGrades = exGrades[currentUserId];
             if (textarea && document.activeElement !== textarea) {
-                var myGrades = exGrades[currentUserId];
                 var myVal = myGrades ? (myGrades[catKey] || '') : '';
-                if (textarea.value !== myVal) {
+                // Don't overwrite if we're in draft mode (local value takes precedence)
+                if (!App.Draft.isPrivate(currentExamId) && textarea.value !== myVal) {
                     textarea.value = myVal;
                 }
+            }
+
+            // Update my competence mark buttons
+            var markGroup = cell.querySelector('.competence-marks');
+            if (markGroup) {
+                var myMark = myGrades ? (myGrades[catKey + '_mark'] || '') : '';
+                markGroup.querySelectorAll('.comp-btn').forEach(function (btn) {
+                    btn.classList.toggle('active', btn.dataset.mark === myMark);
+                });
             }
         });
     }
@@ -588,7 +682,12 @@ App.ExamTable = (function () {
                             catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span></div>';
                         }
                     } else {
-                        catHtml += '<div class="trainer-note">' + App.Utils.escapeHtml(val) + '</div>';
+                        var mark = tGrades ? (tGrades[cat.key + '_mark'] || '') : '';
+                        var markHtml = mark
+                            ? '<span style="font-weight:700;color:' + (mark === 'v' ? '#2e7d32' : mark === 'q' ? '#e65100' : '#c62828') + '">' +
+                              (mark === 'v' ? '✓' : mark === 'q' ? '?' : '✗') + '</span> '
+                            : '';
+                        catHtml += '<div class="trainer-note">' + markHtml + App.Utils.escapeHtml(val) + '</div>';
                     }
                 }
             });
@@ -622,6 +721,24 @@ App.ExamTable = (function () {
         document.getElementById('btn-copy-examinees').addEventListener('click', showCopyExamineesModal);
         document.getElementById('btn-manage-categories').addEventListener('click', showManageCategoriesModal);
         document.getElementById('btn-sort-examinees').addEventListener('click', showSortModal);
+        document.getElementById('btn-general-remarks').addEventListener('click', showGeneralRemarksModal);
+
+        document.getElementById('btn-draft-toggle').addEventListener('click', async function () {
+            var userId = App.Auth.getUserId();
+            if (App.Draft.isPrivate(currentExamId)) {
+                // Publish draft
+                var pending = App.Draft.pendingCount(currentExamId, userId);
+                if (pending > 0) {
+                    if (!confirm(t('publishDraft') + ' (' + pending + ')?')) return;
+                    await App.Draft.publish(currentExamId, userId);
+                    App.showToast(t('draftPublished'));
+                }
+                App.Draft.setMode(currentExamId, 'published');
+            } else {
+                App.Draft.setMode(currentExamId, 'private');
+            }
+            renderTable();
+        });
 
         document.getElementById('btn-import-students').addEventListener('click', function () {
             document.getElementById('import-students-file').click();
@@ -662,9 +779,13 @@ App.ExamTable = (function () {
             btn.addEventListener('click', async function (e) {
                 e.stopPropagation();
                 e.preventDefault();
-                if (confirm(t('confirmDeleteExaminee'))) {
-                    await App.Storage.removeExaminee(currentExamId, btn.dataset.id);
-                }
+                var exId = btn.dataset.id;
+                var exData = cachedExaminees[exId];
+                if (!exData) return;
+                await App.Storage.removeExaminee(currentExamId, exId);
+                App.Undo.push('examineeDeleted', async function () {
+                    await App.Storage.restoreExaminee(currentExamId, exId, exData);
+                });
             });
         });
 
@@ -686,7 +807,9 @@ App.ExamTable = (function () {
 
         // Pass/fail buttons
         document.querySelectorAll('.passfail-selector').forEach(function (sel) {
-            var condInput = sel.parentElement.querySelector('.condition-input');
+            var cell = sel.parentElement;
+            var condInput = cell.querySelector('.condition-input');
+            var newRankWrapper = cell.querySelector('.newrank-wrapper');
             sel.querySelectorAll('.pf-btn').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     var exId = sel.dataset.examinee;
@@ -697,19 +820,22 @@ App.ExamTable = (function () {
                     if (currentActive === btn) {
                         btn.classList.remove('active');
                         if (condInput) condInput.classList.add('hidden');
-                        App.Storage.updateGrade(currentExamId, exId, catKey, '');
+                        if (newRankWrapper) newRankWrapper.classList.add('hidden');
+                        saveGrade(exId, catKey, '');
                     } else {
                         sel.querySelectorAll('.pf-btn').forEach(function (b) { b.classList.remove('active'); });
                         btn.classList.add('active');
+                        var showRank = (val === 'pass' || val === 'conditional');
+                        if (newRankWrapper) newRankWrapper.classList.toggle('hidden', !showRank);
                         if (val === 'conditional') {
                             if (condInput) {
                                 condInput.classList.remove('hidden');
                                 condInput.focus();
                             }
-                            App.Storage.updateGrade(currentExamId, exId, catKey, 'conditional:' + (condInput ? condInput.value : ''));
+                            saveGrade(exId, catKey, 'conditional:' + (condInput ? condInput.value : ''));
                         } else {
                             if (condInput) condInput.classList.add('hidden');
-                            App.Storage.updateGrade(currentExamId, exId, catKey, val);
+                            saveGrade(exId, catKey, val);
                         }
                     }
                 });
@@ -719,8 +845,36 @@ App.ExamTable = (function () {
         // Condition text inputs
         document.querySelectorAll('.condition-input').forEach(function (ta) {
             ta.addEventListener('input', function () {
-                App.Storage.updateGrade(currentExamId, ta.dataset.examinee, ta.dataset.category, 'conditional:' + ta.value);
+                saveGrade(ta.dataset.examinee, ta.dataset.category, 'conditional:' + ta.value);
             });
+        });
+
+        // Competence mark buttons (V / ? / X)
+        document.querySelectorAll('.competence-marks').forEach(function (group) {
+            var exId = group.dataset.examinee;
+            var catKey = group.dataset.category;
+            group.querySelectorAll('.comp-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var mark = btn.dataset.mark;
+                    var current = btn.classList.contains('active') ? mark : '';
+                    var newMark = (current === mark) ? '' : mark; // toggle
+                    group.querySelectorAll('.comp-btn').forEach(function (b) { b.classList.remove('active'); });
+                    if (newMark) btn.classList.add('active');
+                    saveGrade(exId, catKey + '_mark', newMark);
+                });
+            });
+        });
+
+        // New rank selects (inside rank_approval pass/fail cells)
+        document.querySelectorAll('.newrank-wrapper').forEach(function (wrapper) {
+            var exId = wrapper.dataset.examinee;
+            var catKey = wrapper.dataset.category;
+            var sel = wrapper.querySelector('.newrank-select');
+            if (sel) {
+                sel.addEventListener('change', function () {
+                    saveGrade(exId, catKey + '_newRank', sel.value);
+                });
+            }
         });
     }
 
@@ -740,10 +894,7 @@ App.ExamTable = (function () {
         html += '<input type="text" id="new-last-name">';
         html += '</div>';
         html += '</div>';
-        html += '<div class="form-group">';
-        html += '<label>' + t('rank') + '</label>';
-        html += '<input type="text" id="new-rank">';
-        html += '</div>';
+        html += App.Utils.buildRankSelect('new-rank', '', t('rank'));
         html += '<div class="modal-actions">';
         html += '<button class="btn btn-primary" id="btn-confirm-add">' + t('create') + '</button>';
         html += '<button class="btn btn-outline" id="btn-cancel-add">' + t('cancel') + '</button>';
@@ -967,8 +1118,12 @@ App.ExamTable = (function () {
         var html = '<div class="modal-overlay" id="cat-mgr-overlay"><div class="modal modal-wide">';
         html += '<h2>' + t('manageCategories') + '</h2>';
         html += '<div class="cat-mgr-list">';
+        html += '<div class="cat-mgr-row cat-mgr-header">';
+        html += '<label class="cat-mgr-selectall"><input type="checkbox" id="cat-mgr-select-all"> ' + t('selectAll') + '</label>';
+        html += '</div>';
         categories.forEach(function (cat) {
             html += '<div class="cat-mgr-row" data-key="' + cat.key + '">';
+            html += '<label class="cat-mgr-checkbox"><input type="checkbox" class="cat-mgr-cb" value="' + cat.key + '"></label>';
             html += '<span class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he) + '</span>';
             html += '<div class="cat-mgr-actions">';
             html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️</button>';
@@ -977,42 +1132,84 @@ App.ExamTable = (function () {
             html += '</div>';
         });
         html += '</div>';
-        html += '<div class="modal-actions" style="justify-content:space-between">';
+        html += '<div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">';
         html += '<button class="btn btn-outline" id="btn-add-category">+ ' + t('addCategory') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-open-presets">' + t('categoryPresets') + '</button>';
+        html += '<button class="btn btn-danger" id="btn-delete-selected-categories">' + t('deleteSelected') + '</button>';
         html += '<button class="btn btn-outline" id="btn-close-cat-mgr">' + t('cancel') + '</button>';
         html += '</div></div></div>';
         modalContainer.innerHTML = html;
 
-        // Edit buttons
+        // Select-all toggle
+        document.getElementById('cat-mgr-select-all').addEventListener('change', function () {
+            var checked = this.checked;
+            document.querySelectorAll('.cat-mgr-cb').forEach(function (cb) { cb.checked = checked; });
+        });
+
+        // Edit buttons — after editing, showCategoryEditForm's save handler returns to this modal
         document.querySelectorAll('.cat-edit-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 showCategoryEditForm(btn.dataset.key);
             });
         });
 
-        // Delete buttons
+        // Single delete — stay in modal after delete
         document.querySelectorAll('.cat-delete-btn').forEach(function (btn) {
             btn.addEventListener('click', async function () {
                 if (!confirm(t('confirmDeleteCategory'))) return;
-                categoryOrder = categoryOrder.filter(function (k) { return k !== btn.dataset.key; });
-                // Remove from customCategories if it was custom
-                if (customCategories[btn.dataset.key]) {
-                    delete customCategories[btn.dataset.key];
-                    await App.Storage.updateCustomCategories(currentExamId, customCategories);
-                }
-                await App.Storage.updateCategoryOrder(currentExamId, categoryOrder);
-                cachedExam.categoryOrder = categoryOrder;
-                cachedExam.customCategories = customCategories;
-                modalContainer.innerHTML = '';
-                renderTable();
+                await deleteCategories([btn.dataset.key], 'categoryDeleted');
+                showManageCategoriesModal(); // re-render modal
             });
+        });
+
+        // Bulk delete
+        document.getElementById('btn-delete-selected-categories').addEventListener('click', async function () {
+            var selected = Array.from(document.querySelectorAll('.cat-mgr-cb:checked')).map(function (cb) { return cb.value; });
+            if (!selected.length) {
+                alert(t('noCategoriesSelected'));
+                return;
+            }
+            if (!confirm(t('confirmDeleteSelectedCategories'))) return;
+            await deleteCategories(selected, 'categoriesDeleted');
+            showManageCategoriesModal(); // re-render modal
         });
 
         document.getElementById('btn-add-category').addEventListener('click', function () {
             showCategoryEditForm(null);
         });
-        document.getElementById('btn-close-cat-mgr').addEventListener('click', function () { modalContainer.innerHTML = ''; });
-        document.getElementById('cat-mgr-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+        document.getElementById('btn-open-presets').addEventListener('click', showPresetsModal);
+        document.getElementById('btn-close-cat-mgr').addEventListener('click', function () { modalContainer.innerHTML = ''; renderTable(); });
+        document.getElementById('cat-mgr-overlay').addEventListener('click', function (e) { if (e.target === this) { modalContainer.innerHTML = ''; renderTable(); } });
+    }
+
+    async function deleteCategories(keys, undoLabelKey) {
+        // Snapshot what we're about to delete so undo can restore it
+        var snapshot = {
+            order: categoryOrder.slice(),
+            customs: Object.assign({}, customCategories)
+        };
+
+        categoryOrder = categoryOrder.filter(function (k) { return keys.indexOf(k) === -1; });
+        var customMutated = false;
+        keys.forEach(function (k) {
+            if (customCategories[k]) { delete customCategories[k]; customMutated = true; }
+        });
+        if (customMutated) await App.Storage.updateCustomCategories(currentExamId, customCategories);
+        await App.Storage.updateCategoryOrder(currentExamId, categoryOrder);
+        cachedExam.categoryOrder = categoryOrder;
+        cachedExam.customCategories = customCategories;
+
+        if (undoLabelKey) {
+            App.Undo.push(undoLabelKey, async function () {
+                categoryOrder = snapshot.order;
+                customCategories = snapshot.customs;
+                await App.Storage.updateCustomCategories(currentExamId, customCategories);
+                await App.Storage.updateCategoryOrder(currentExamId, categoryOrder);
+                cachedExam.categoryOrder = categoryOrder;
+                cachedExam.customCategories = customCategories;
+                showManageCategoriesModal();
+            });
+        }
     }
 
     function showCategoryEditForm(catKey) {
@@ -1064,10 +1261,146 @@ App.ExamTable = (function () {
             ]);
             cachedExam.categoryOrder = categoryOrder;
             cachedExam.customCategories = customCategories;
-            modalContainer.innerHTML = '';
-            renderTable();
+            // Stay in category management — re-render it to show updated state
+            showManageCategoriesModal();
         });
     }
+
+    // --- General exam remarks modal ---
+
+    async function showGeneralRemarksModal() {
+        var t = App.I18n.t;
+        var userId = App.Auth.getUserId();
+        var modalContainer = document.getElementById('modal-container');
+        modalContainer.innerHTML = '<div class="modal-overlay"><div class="modal"><p>' + t('loading') + '</p></div></div>';
+
+        var allRemarks = await App.Storage.getGeneralRemarks(currentExamId);
+        var myText = (allRemarks[userId] && allRemarks[userId].text) || '';
+        var otherEntries = Object.entries(allRemarks).filter(function (kv) { return kv[0] !== userId; });
+
+        var html = '<div class="modal-overlay" id="remarks-overlay"><div class="modal">';
+        html += '<h2>' + t('generalRemarks') + '</h2>';
+        html += '<div class="form-group">';
+        html += '<label>' + t('yourRemarks') + '</label>';
+        html += '<textarea id="my-general-remarks" rows="5" style="width:100%;resize:vertical">' + App.Utils.escapeHtml(myText) + '</textarea>';
+        html += '</div>';
+
+        if (otherEntries.length > 0) {
+            html += '<div class="form-group">';
+            html += '<label>' + t('othersRemarks') + '</label>';
+            otherEntries.forEach(function (kv) {
+                var entry = kv[1];
+                if (!entry.text) return;
+                html += '<div class="other-trainer-note" style="margin-bottom:6px">';
+                html += '<span class="trainer-label">' + App.Utils.escapeHtml(entry.name) + ':</span>';
+                html += '<span class="trainer-text" style="white-space:pre-wrap">' + App.Utils.escapeHtml(entry.text) + '</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-primary" id="btn-save-remarks">' + t('save') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-close-remarks">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        document.getElementById('btn-save-remarks').addEventListener('click', async function () {
+            var text = document.getElementById('my-general-remarks').value;
+            await App.Storage.saveGeneralRemarks(currentExamId, text);
+            modalContainer.innerHTML = '';
+            App.showToast(t('dataSaved'));
+        });
+        document.getElementById('btn-close-remarks').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('remarks-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+        document.getElementById('my-general-remarks').focus();
+    }
+
+    // --- Category presets ---
+
+    async function showPresetsModal() {
+        var t = App.I18n.t;
+        var userId = App.Auth.getUserId();
+        var modalContainer = document.getElementById('modal-container');
+        modalContainer.innerHTML = '<div class="modal-overlay"><div class="modal"><p>' + t('loading') + '</p></div></div>';
+
+        var presets = await App.Storage.getPresets();
+
+        var html = '<div class="modal-overlay" id="presets-overlay"><div class="modal modal-wide">';
+        html += '<h2>' + t('categoryPresets') + '</h2>';
+
+        if (presets.length === 0) {
+            html += '<p class="invite-subtitle">' + t('noPresets') + '</p>';
+        } else {
+            html += '<div class="cat-mgr-list">';
+            presets.forEach(function (p) {
+                html += '<div class="cat-mgr-row">';
+                html += '<span class="cat-mgr-name">' + App.Utils.escapeHtml(p.name) + ' <small style="color:var(--text-secondary)">— ' + App.Utils.escapeHtml(p.createdByName || '') + '</small></span>';
+                html += '<div class="cat-mgr-actions">';
+                html += '<button class="btn btn-sm btn-primary preset-load-btn" data-id="' + p.id + '">' + t('loadPreset') + '</button>';
+                if (p.createdBy === userId) {
+                    html += '<button class="btn btn-sm btn-danger preset-delete-btn" data-id="' + p.id + '">' + t('deletePreset') + '</button>';
+                }
+                html += '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        html += '<div class="form-group" style="margin-top:12px">';
+        html += '<label>' + t('saveAsPreset') + '</label>';
+        html += '<div style="display:flex;gap:8px">';
+        html += '<input type="text" id="preset-name-input" placeholder="' + t('presetName') + '" style="flex:1">';
+        html += '<button class="btn btn-outline" id="btn-save-preset">' + t('save') + '</button>';
+        html += '</div></div>';
+
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-outline" id="btn-close-presets">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        // Load preset
+        document.querySelectorAll('.preset-load-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                var preset = presets.find(function (p) { return p.id === btn.dataset.id; });
+                if (!preset) return;
+                categoryOrder = preset.categoryOrder || App.Utils.DEFAULT_CATEGORY_ORDER;
+                customCategories = preset.customCategories || {};
+                await Promise.all([
+                    App.Storage.updateCategoryOrder(currentExamId, categoryOrder),
+                    App.Storage.updateCustomCategories(currentExamId, customCategories)
+                ]);
+                cachedExam.categoryOrder = categoryOrder;
+                cachedExam.customCategories = customCategories;
+                modalContainer.innerHTML = '';
+                renderTable();
+                App.showToast(t('presetLoaded'));
+            });
+        });
+
+        // Delete preset (own only)
+        document.querySelectorAll('.preset-delete-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                if (!confirm(t('confirmDeletePreset'))) return;
+                await App.Storage.deletePreset(btn.dataset.id);
+                showPresetsModal();
+            });
+        });
+
+        // Save current as preset
+        document.getElementById('btn-save-preset').addEventListener('click', async function () {
+            var name = document.getElementById('preset-name-input').value.trim();
+            if (!name) { document.getElementById('preset-name-input').focus(); return; }
+            await App.Storage.savePreset(name, categoryOrder, customCategories);
+            App.showToast(t('presetSaved'));
+            showPresetsModal();
+        });
+
+        document.getElementById('btn-close-presets').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+        document.getElementById('presets-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
+    }
+
+    // Hook presets into the manage-categories modal: add a "Presets" button
 
     return { render: render };
 })();

@@ -150,6 +150,66 @@ App.Utils = (function () {
         }).filter(Boolean);
     }
 
+    // --- Shared Gasshuku list widget ---
+    // Used by both the student invite form and the trainer edit page so they stay in sync.
+
+    function _renderGasshukuRow(idx, location, date) {
+        var t = App.I18n.t;
+        var html = '<div class="gasshuku-row" data-idx="' + idx + '">';
+        html += '<input type="text" class="gasshuku-location" placeholder="' + t('gasshukuLocation') + '" value="' + escapeHtml(location || '') + '">';
+        html += '<input type="date" class="gasshuku-date" value="' + escapeHtml(date || '') + '">';
+        html += '<button type="button" class="btn btn-sm btn-danger gasshuku-remove-btn" title="' + t('removeGasshuku') + '">&#10005;</button>';
+        html += '</div>';
+        return html;
+    }
+
+    // Populates `listEl` (container for rows) with initial gasshuku rows and
+    // wires up the associated "+ add" button (`addBtnEl`). Both elements must
+    // exist in the DOM when this is called.
+    function renderGasshukuList(listEl, addBtnEl, initial) {
+        if (!listEl) return;
+        var gList = Array.isArray(initial) && initial.length ? initial : [{ location: '', date: '' }];
+        var html = '';
+        gList.forEach(function (g, idx) { html += _renderGasshukuRow(idx, g.location || '', g.date || ''); });
+        listEl.innerHTML = html;
+
+        function attachRemoveHandlers() {
+            listEl.querySelectorAll('.gasshuku-remove-btn').forEach(function (btn) {
+                if (btn.dataset.bound) return;
+                btn.dataset.bound = '1';
+                btn.addEventListener('click', function () {
+                    var row = btn.closest('.gasshuku-row');
+                    if (row) row.remove();
+                    if (listEl.querySelectorAll('.gasshuku-row').length === 0) {
+                        listEl.insertAdjacentHTML('beforeend', _renderGasshukuRow(0, '', ''));
+                        attachRemoveHandlers();
+                    }
+                });
+            });
+        }
+        attachRemoveHandlers();
+
+        if (addBtnEl && !addBtnEl.dataset.bound) {
+            addBtnEl.dataset.bound = '1';
+            addBtnEl.addEventListener('click', function () {
+                var idx = listEl.querySelectorAll('.gasshuku-row').length;
+                listEl.insertAdjacentHTML('beforeend', _renderGasshukuRow(idx, '', ''));
+                attachRemoveHandlers();
+            });
+        }
+    }
+
+    function readGasshukuList(listEl) {
+        var rows = listEl ? listEl.querySelectorAll('.gasshuku-row') : [];
+        var result = [];
+        rows.forEach(function (row) {
+            var loc = row.querySelector('.gasshuku-location').value.trim();
+            var dt = row.querySelector('.gasshuku-date').value;
+            if (loc || dt) result.push({ location: loc, date: dt });
+        });
+        return result;
+    }
+
     return {
         generateId: generateId,
         calculateAge: calculateAge,
@@ -161,6 +221,8 @@ App.Utils = (function () {
         getCategoriesOrdered: getCategoriesOrdered,
         getEmptyGrades: getEmptyGrades,
         RANK_GROUPS: RANK_GROUPS,
-        buildRankSelect: buildRankSelect
+        buildRankSelect: buildRankSelect,
+        renderGasshukuList: renderGasshukuList,
+        readGasshukuList: readGasshukuList
     };
 })();

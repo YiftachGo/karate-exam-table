@@ -30,6 +30,7 @@ App.ExamList = (function () {
                 html += '<div class="exam-card-header">';
                 html += '<h3>' + App.Utils.escapeHtml(exam.name) + '</h3>';
                 if (isOwner) {
+                    html += '<button class="btn btn-sm btn-outline rename-exam-btn" data-id="' + exam.id + '" data-name="' + App.Utils.escapeHtml(exam.name) + '" title="' + t('renameExam') + '">&#9998;</button>';
                     html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
                 }
                 html += '</div>';
@@ -76,18 +77,31 @@ App.ExamList = (function () {
 
         document.querySelectorAll('.exam-card').forEach(function (card) {
             card.addEventListener('click', function (e) {
-                if (e.target.closest('.delete-exam-btn') || e.target.closest('.export-exam-btn')) return;
+                if (e.target.closest('.delete-exam-btn') || e.target.closest('.export-exam-btn') || e.target.closest('.rename-exam-btn')) return;
                 App.Router.navigate('#/exam/' + card.dataset.id);
+            });
+        });
+
+        document.querySelectorAll('.rename-exam-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                showRenameExamModal(btn.dataset.id, btn.dataset.name);
             });
         });
 
         document.querySelectorAll('.delete-exam-btn').forEach(function (btn) {
             btn.addEventListener('click', async function (e) {
                 e.stopPropagation();
-                if (confirm(t('confirmDeleteExam'))) {
-                    await App.Storage.deleteExam(btn.dataset.id);
+                if (!confirm(t('confirmDeleteExam'))) return;
+                var examId = btn.dataset.id;
+                // Fetch exam data before deletion so we can restore it
+                var examData = await App.Storage.getExam(examId);
+                await App.Storage.deleteExam(examId);
+                render();
+                App.Undo.push('examDeleted', async function () {
+                    await App.Storage.restoreExam(examId, examData);
                     render();
-                }
+                });
             });
         });
 
@@ -132,6 +146,43 @@ App.ExamList = (function () {
             if (e.key === 'Enter') createExam();
         });
         document.getElementById('new-exam-name').focus();
+    }
+
+    function showRenameExamModal(examId, currentName) {
+        var t = App.I18n.t;
+        var modalContainer = document.getElementById('modal-container');
+        var html = '<div class="modal-overlay" id="rename-exam-overlay">';
+        html += '<div class="modal">';
+        html += '<h2>' + t('renameExam') + '</h2>';
+        html += '<div class="form-group">';
+        html += '<label>' + t('newExamName') + '</label>';
+        html += '<input type="text" id="rename-exam-input" value="' + App.Utils.escapeHtml(currentName || '') + '" autofocus>';
+        html += '</div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-primary" id="btn-confirm-rename">' + t('save') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-cancel-rename">' + t('cancel') + '</button>';
+        html += '</div>';
+        html += '</div></div>';
+        modalContainer.innerHTML = html;
+
+        function close() { modalContainer.innerHTML = ''; }
+        async function commit() {
+            var newName = document.getElementById('rename-exam-input').value.trim();
+            if (!newName) { document.getElementById('rename-exam-input').focus(); return; }
+            if (newName === currentName) { close(); return; }
+            await App.Storage.updateExam(examId, { name: newName });
+            close();
+            render();
+            App.showToast(t('dataSaved'));
+        }
+
+        document.getElementById('btn-confirm-rename').addEventListener('click', commit);
+        document.getElementById('btn-cancel-rename').addEventListener('click', close);
+        document.getElementById('rename-exam-overlay').addEventListener('click', function (e) { if (e.target === this) close(); });
+        document.getElementById('rename-exam-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(); });
+        var input = document.getElementById('rename-exam-input');
+        input.focus();
+        input.select();
     }
 
     async function createExam() {
