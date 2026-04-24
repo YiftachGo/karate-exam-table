@@ -134,18 +134,18 @@ App.Storage = (function () {
             .collection('examinees').doc(examineeId).set(payload);
     }
 
-    // --- General exam remarks (per trainer, stored in grades subcollection) ---
-    // Doc ID: '__general__' + trainerId  Field: 'general_remarks'
+    // --- General exam remarks (per trainer, in dedicated subcollection) ---
+    // Path: exams/{examId}/generalRemarks/{trainerId}
 
     async function saveGeneralRemarks(examId, text) {
         var trainerId = App.Auth.getUserId();
         var trainerName = App.Auth.getUserName();
         var docRef = App.db.collection('exams').doc(examId)
-            .collection('grades').doc('__general__' + trainerId);
+            .collection('generalRemarks').doc(trainerId);
         await docRef.set({
             trainerId: trainerId,
             trainerName: trainerName,
-            general_remarks: text,
+            text: text,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
     }
@@ -153,14 +153,11 @@ App.Storage = (function () {
     // Returns {[trainerId]: {name, text}} for all trainers who wrote remarks.
     async function getGeneralRemarks(examId) {
         var snap = await App.db.collection('exams').doc(examId)
-            .collection('grades')
-            .where(firebase.firestore.FieldPath.documentId(), '>=', '__general__')
-            .where(firebase.firestore.FieldPath.documentId(), '<', '__general__\uffff')
-            .get();
+            .collection('generalRemarks').get();
         var result = {};
         snap.docs.forEach(function (d) {
             var data = d.data();
-            result[data.trainerId] = { name: data.trainerName || data.trainerId, text: data.general_remarks || '' };
+            result[d.id] = { name: data.trainerName || d.id, text: data.text || '' };
         });
         return result;
     }

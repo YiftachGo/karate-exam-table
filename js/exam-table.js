@@ -109,18 +109,22 @@ App.ExamTable = (function () {
         html += '<span class="exam-date-badge">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-add-examinee">+ ' + t('addExaminee') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-copy-examinees">' + t('copyExaminees') + '</button>';
-        if (isOwner) {
-            html += '<button class="btn btn-outline" id="btn-share-exam">' + t('shareExam') + '</button>';
-            html += '<button class="btn btn-outline" id="btn-invite-examinees">' + t('inviteExaminees') + '</button>';
-        }
-        html += '<button class="btn btn-outline" id="btn-manage-categories">' + t('manageCategories') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-sort-examinees">' + t('sort') + '</button>';
         html += '<button class="btn btn-outline" id="btn-general-remarks">' + t('generalRemarks') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-import-students">' + t('importStudents') + '</button>';
-        html += '<input type="file" id="import-students-file" accept=".xlsx,.csv,.json" style="display:none">';
-        html += '<button class="btn btn-outline" id="btn-export-exam">' + t('export') + '</button>';
         html += renderDraftToggle();
+
+        // Manage Test dropdown — collapses copy/import/export/share/invite
+        html += '<div class="menu-wrapper" id="manage-test-wrapper">';
+        html += '<button class="btn btn-outline" id="btn-manage-test">' + t('manageTest') + ' &#9662;</button>';
+        html += '<div class="menu-dropdown" id="manage-test-menu">';
+        html += '<button class="menu-item" data-action="copy">' + t('copyExaminees') + '</button>';
+        html += '<button class="menu-item" data-action="import">' + t('importStudents') + '</button>';
+        html += '<button class="menu-item" data-action="export">' + t('export') + '</button>';
+        if (isOwner) {
+            html += '<button class="menu-item" data-action="share">' + t('shareExam') + '</button>';
+            html += '<button class="menu-item" data-action="invite">' + t('inviteExaminees') + '</button>';
+        }
+        html += '</div></div>';
+        html += '<input type="file" id="import-students-file" accept=".xlsx,.csv,.json" style="display:none">';
         html += '</div>';
 
         if (examinees.length === 0) {
@@ -133,7 +137,17 @@ App.ExamTable = (function () {
 
             // Header row - examinees are draggable
             html += '<thead><tr>';
-            html += '<th class="sticky-col category-header">' + t('category') + '</th>';
+            html += '<th class="sticky-col category-header">';
+            html += '<div class="cat-header-content">';
+            html += '<span>' + t('category') + '</span>';
+            html += '<div class="menu-wrapper" id="cat-header-menu-wrapper">';
+            html += '<button class="cat-header-menu-btn" id="btn-cat-header-menu" title="' + t('options') + '">&#8942;</button>';
+            html += '<div class="menu-dropdown menu-dropdown-cat" id="cat-header-menu">';
+            html += '<button class="menu-item" data-action="sort">' + t('sort') + '</button>';
+            html += '<button class="menu-item" data-action="manage">' + t('manageCategories') + '</button>';
+            html += '</div></div>';
+            html += '</div>';
+            html += '</th>';
             examinees.forEach(function (ex, idx) {
                 html += '<th class="examinee-header" data-id="' + ex.id + '" data-order="' + idx + '"' + (isTouch ? '' : ' draggable="true"') + '>';
                 html += '<div class="examinee-header-content">';
@@ -705,6 +719,39 @@ App.ExamTable = (function () {
         win.document.close();
     }
 
+    // Wires a button → dropdown menu pair. Toggles open class, handles click-outside,
+    // and dispatches data-action on menu-item click to the supplied callback.
+    function bindMenuDropdown(triggerId, menuId, onAction) {
+        var trigger = document.getElementById(triggerId);
+        var menu = document.getElementById(menuId);
+        if (!trigger || !menu) return;
+
+        function close() {
+            menu.classList.remove('open');
+            document.removeEventListener('click', outsideHandler, true);
+        }
+        function outsideHandler(e) {
+            if (!menu.contains(e.target) && e.target !== trigger) close();
+        }
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = menu.classList.contains('open');
+            // Close any other open menus first
+            document.querySelectorAll('.menu-dropdown.open').forEach(function (m) { m.classList.remove('open'); });
+            if (!wasOpen) {
+                menu.classList.add('open');
+                setTimeout(function () { document.addEventListener('click', outsideHandler, true); }, 0);
+            }
+        });
+        menu.querySelectorAll('.menu-item').forEach(function (item) {
+            item.addEventListener('click', function (e) {
+                e.stopPropagation();
+                close();
+                onAction(item.dataset.action);
+            });
+        });
+    }
+
     function bindEvents() {
         var t = App.I18n.t;
 
@@ -716,12 +763,22 @@ App.ExamTable = (function () {
             showAddExamineeModal();
         });
 
-        document.getElementById('btn-export-exam').addEventListener('click', showExportModal);
-
-        document.getElementById('btn-copy-examinees').addEventListener('click', showCopyExamineesModal);
-        document.getElementById('btn-manage-categories').addEventListener('click', showManageCategoriesModal);
-        document.getElementById('btn-sort-examinees').addEventListener('click', showSortModal);
         document.getElementById('btn-general-remarks').addEventListener('click', showGeneralRemarksModal);
+
+        // Manage Test dropdown
+        bindMenuDropdown('btn-manage-test', 'manage-test-menu', function (action) {
+            if (action === 'copy') showCopyExamineesModal();
+            else if (action === 'import') document.getElementById('import-students-file').click();
+            else if (action === 'export') showExportModal();
+            else if (action === 'share') showShareModal();
+            else if (action === 'invite') showInviteModal();
+        });
+
+        // Category header three-dots menu
+        bindMenuDropdown('btn-cat-header-menu', 'cat-header-menu', function (action) {
+            if (action === 'sort') showSortModal();
+            else if (action === 'manage') showManageCategoriesModal();
+        });
 
         document.getElementById('btn-draft-toggle').addEventListener('click', async function () {
             var userId = App.Auth.getUserId();
@@ -740,9 +797,6 @@ App.ExamTable = (function () {
             renderTable();
         });
 
-        document.getElementById('btn-import-students').addEventListener('click', function () {
-            document.getElementById('import-students-file').click();
-        });
         document.getElementById('import-students-file').addEventListener('change', async function (e) {
             var file = e.target.files[0];
             if (!file) return;
@@ -764,16 +818,6 @@ App.ExamTable = (function () {
                 alert(t('error') + ': ' + (err.message || err));
             }
         });
-
-        var shareBtn = document.getElementById('btn-share-exam');
-        if (shareBtn) {
-            shareBtn.addEventListener('click', showShareModal);
-        }
-
-        var inviteBtn = document.getElementById('btn-invite-examinees');
-        if (inviteBtn) {
-            inviteBtn.addEventListener('click', showInviteModal);
-        }
 
         document.querySelectorAll('.remove-examinee-btn').forEach(function (btn) {
             btn.addEventListener('click', async function (e) {

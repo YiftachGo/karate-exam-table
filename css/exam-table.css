@@ -11,7 +11,8 @@
 }
 
 .table-wrapper {
-    overflow-x: auto;
+    max-height: calc(100vh - var(--header-height) - 180px);
+    overflow: auto;
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     background: var(--bg-card);
@@ -526,3 +527,83 @@ thead .sticky-col {
     gap: 4px;
 }
 
+/* Generic dropdown menu (Manage Test toolbar + category header three-dots) */
+.menu-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.menu-dropdown {
+    position: absolute;
+    top: 100%;
+    inset-inline-end: 0;
+    min-width: 180px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 4px 0;
+    z-index: 50;
+    display: none;
+    margin-top: 4px;
+}
+
+.menu-dropdown.open {
+    display: block;
+}
+
+.menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    text-align: start;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.menu-item:hover {
+    background: var(--bg);
+}
+
+/* Category header three-dots button + its dropdown */
+.cat-header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.cat-header-menu-btn {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    font-family: inherit;
+}
+
+.cat-header-menu-btn:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+/* Dropdown inside sticky header must sit above other sticky cells */
+.menu-dropdown-cat {
+    z-index: 60;
+    color: var(--text);
+}
+
+@media print {
+    .cat-header-menu-btn,
+    .menu-dropdown,
+    #btn-manage-test {
+        display: none !important;
+    }
+}

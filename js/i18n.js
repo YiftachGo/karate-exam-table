@@ -202,7 +202,9 @@ App.I18n = (function () {
             presetLoaded: 'התבנית נטענה',
             deletePreset: 'מחק תבנית',
             confirmDeletePreset: 'למחוק תבנית זו?',
-            noPresets: 'אין תבניות שמורות'
+            noPresets: 'אין תבניות שמורות',
+            manageTest: 'ניהול מבחן',
+            options: 'אפשרויות'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -399,7 +401,9 @@ App.I18n = (function () {
             presetLoaded: 'Preset loaded',
             deletePreset: 'Delete Preset',
             confirmDeletePreset: 'Delete this preset?',
-            noPresets: 'No saved presets'
+            noPresets: 'No saved presets',
+            manageTest: 'Manage Test',
+            options: 'Options'
         }
     };
 
