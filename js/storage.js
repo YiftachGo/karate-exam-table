@@ -203,7 +203,7 @@ App.Storage = (function () {
             trainingStartDate: '',
             lastExamDate: '',
             trainingsPerWeek: '',
-            beltTrainings: '',
+            beltTrainings: [],
             gasshukus: [],
             examPayment: '',
             photoUrl: '',
@@ -412,7 +412,7 @@ App.Storage = (function () {
             trainingStartDate: data.trainingStartDate || '',
             lastExamDate: data.lastExamDate || '',
             trainingsPerWeek: data.trainingsPerWeek || '',
-            beltTrainings: data.beltTrainings || '',
+            beltTrainings: Array.isArray(data.beltTrainings) ? data.beltTrainings : [],
             gasshukus: Array.isArray(data.gasshukus) ? data.gasshukus : [],
             examPayment: data.examPayment || '',
             photoUrl: data.photoUrl || '',
@@ -644,7 +644,9 @@ App.Storage = (function () {
         examinees.forEach(function (ex) {
             rows.push(STUDENT_COLUMNS.map(function (k) {
                 var v = ex[k];
-                return v == null ? '' : String(v);
+                if (v == null) return '';
+                if (Array.isArray(v)) return String(v.length);
+                return String(v);
             }));
         });
         return rows;

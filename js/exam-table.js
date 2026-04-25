@@ -181,7 +181,7 @@ App.ExamTable = (function () {
                     if (cat.type === 'passfail') {
                         html += renderPassFailCell(ex.id, cat.key, currentUserId, otherTrainers, trainerNames);
                     } else {
-                        html += renderGradeCell(ex.id, cat.key, currentUserId, otherTrainers, trainerNames);
+                        html += renderGradeCell(ex.id, cat.key, currentUserId, otherTrainers, trainerNames, cat);
                     }
                     html += '</td>';
                 });
@@ -202,7 +202,7 @@ App.ExamTable = (function () {
         autoResizeTextareas();
     }
 
-    function renderGradeCell(examineeId, catKey, currentUserId, otherTrainers, trainerNames) {
+    function renderGradeCell(examineeId, catKey, currentUserId, otherTrainers, trainerNames, cat) {
         var html = '';
         var t = App.I18n.t;
         var exGrades = cachedGrades[examineeId] || {};
@@ -234,11 +234,13 @@ App.ExamTable = (function () {
         if (draftData[catKey] !== undefined) myVal = draftData[catKey];
         if (draftData[catKey + '_mark'] !== undefined) myMark = draftData[catKey + '_mark'];
 
-        html += '<div class="competence-marks" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
-        html += '<button class="comp-btn comp-v' + (myMark === 'v' ? ' active' : '') + '" data-mark="v" title="' + t('competenceV') + '">✓</button>';
-        html += '<button class="comp-btn comp-q' + (myMark === 'q' ? ' active' : '') + '" data-mark="q" title="' + t('competenceQ') + '">?</button>';
-        html += '<button class="comp-btn comp-x' + (myMark === 'x' ? ' active' : '') + '" data-mark="x" title="' + t('competenceX') + '">✗</button>';
-        html += '</div>';
+        if (!cat || !cat.hideMarks) {
+            html += '<div class="competence-marks" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
+            html += '<button class="comp-btn comp-v' + (myMark === 'v' ? ' active' : '') + '" data-mark="v" title="' + t('competenceV') + '">✓</button>';
+            html += '<button class="comp-btn comp-q' + (myMark === 'q' ? ' active' : '') + '" data-mark="q" title="' + t('competenceQ') + '">?</button>';
+            html += '<button class="comp-btn comp-x' + (myMark === 'x' ? ' active' : '') + '" data-mark="x" title="' + t('competenceX') + '">✗</button>';
+            html += '</div>';
+        }
 
         html += '<textarea class="grade-textarea" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterNotes') + '">' + App.Utils.escapeHtml(myVal) + '</textarea>';
 
@@ -652,7 +654,8 @@ App.ExamTable = (function () {
         html += '<div class="info-item"><div class="info-label">' + t('fullName') + '</div><div class="info-value">' + App.Utils.escapeHtml(ex.firstName + ' ' + ex.lastName) + '</div></div>';
         if (ex.rank) html += '<div class="info-item"><div class="info-label">' + t('rank') + '</div><div class="info-value">' + App.Utils.escapeHtml(ex.rank) + '</div></div>';
         if (ex.club) html += '<div class="info-item"><div class="info-label">' + t('club') + '</div><div class="info-value">' + App.Utils.escapeHtml(ex.club) + '</div></div>';
-        if (ex.beltTrainings) html += '<div class="info-item"><div class="info-label">' + t('beltTrainings') + '</div><div class="info-value">' + App.Utils.escapeHtml(String(ex.beltTrainings)) + '</div></div>';
+        var beltDisplay = Array.isArray(ex.beltTrainings) ? ex.beltTrainings.length : ex.beltTrainings;
+        if (beltDisplay) html += '<div class="info-item"><div class="info-label">' + t('beltTrainings') + '</div><div class="info-value">' + App.Utils.escapeHtml(String(beltDisplay)) + '</div></div>';
         if (ex.gasshukuCount) html += '<div class="info-item"><div class="info-label">' + t('gasshukuCount') + '</div><div class="info-value">' + App.Utils.escapeHtml(String(ex.gasshukuCount)) + '</div></div>';
         if (ex.examPayment) {
             var payLabel = ex.examPayment === 'paid' ? t('paid') : ex.examPayment === 'unpaid' ? t('unpaid') : ex.examPayment === 'exempt' ? t('exempt') : ex.examPayment;
@@ -697,7 +700,7 @@ App.ExamTable = (function () {
                         }
                     } else {
                         var mark = tGrades ? (tGrades[cat.key + '_mark'] || '') : '';
-                        var markHtml = mark
+                        var markHtml = (mark && !cat.hideMarks)
                             ? '<span style="font-weight:700;color:' + (mark === 'v' ? '#2e7d32' : mark === 'q' ? '#e65100' : '#c62828') + '">' +
                               (mark === 'v' ? '✓' : mark === 'q' ? '?' : '✗') + '</span> '
                             : '';
@@ -721,10 +724,11 @@ App.ExamTable = (function () {
 
     // Wires a button → dropdown menu pair. Toggles open class, handles click-outside,
     // and dispatches data-action on menu-item click to the supplied callback.
-    function bindMenuDropdown(triggerId, menuId, onAction) {
+    function bindMenuDropdown(triggerId, menuId, onAction, opts) {
         var trigger = document.getElementById(triggerId);
         var menu = document.getElementById(menuId);
         if (!trigger || !menu) return;
+        var fixed = opts && opts.fixed;
 
         function close() {
             menu.classList.remove('open');
@@ -739,6 +743,11 @@ App.ExamTable = (function () {
             // Close any other open menus first
             document.querySelectorAll('.menu-dropdown.open').forEach(function (m) { m.classList.remove('open'); });
             if (!wasOpen) {
+                if (fixed) {
+                    var rect = trigger.getBoundingClientRect();
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.insetInlineEnd = (window.innerWidth - rect.right) + 'px';
+                }
                 menu.classList.add('open');
                 setTimeout(function () { document.addEventListener('click', outsideHandler, true); }, 0);
             }
@@ -778,7 +787,7 @@ App.ExamTable = (function () {
         bindMenuDropdown('btn-cat-header-menu', 'cat-header-menu', function (action) {
             if (action === 'sort') showSortModal();
             else if (action === 'manage') showManageCategoriesModal();
-        });
+        }, { fixed: true });
 
         document.getElementById('btn-draft-toggle').addEventListener('click', async function () {
             var userId = App.Auth.getUserId();
@@ -1169,6 +1178,12 @@ App.ExamTable = (function () {
             html += '<div class="cat-mgr-row" data-key="' + cat.key + '">';
             html += '<label class="cat-mgr-checkbox"><input type="checkbox" class="cat-mgr-cb" value="' + cat.key + '"></label>';
             html += '<span class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he) + '</span>';
+            if (cat.type !== 'passfail') {
+                html += '<label class="cat-mgr-marks-label" title="' + t('showMarks') + '">';
+                html += '<input type="checkbox" class="cat-mgr-marks-cb" data-key="' + cat.key + '"' + (cat.hideMarks ? '' : ' checked') + '>';
+                html += ' ' + t('showMarks');
+                html += '</label>';
+            }
             html += '<div class="cat-mgr-actions">';
             html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️</button>';
             html += '<button class="btn btn-sm btn-danger cat-delete-btn" data-key="' + cat.key + '">🗑️</button>';
@@ -1188,6 +1203,27 @@ App.ExamTable = (function () {
         document.getElementById('cat-mgr-select-all').addEventListener('change', function () {
             var checked = this.checked;
             document.querySelectorAll('.cat-mgr-cb').forEach(function (cb) { cb.checked = checked; });
+        });
+
+        // Per-category V/?/X marks toggle
+        document.querySelectorAll('.cat-mgr-marks-cb').forEach(function (cb) {
+            cb.addEventListener('change', async function () {
+                var key = cb.dataset.key;
+                var existing = customCategories[key] || {};
+                if (cb.checked) {
+                    delete existing.hideMarks;
+                    if (Object.keys(existing).length === 0) {
+                        delete customCategories[key];
+                    } else {
+                        customCategories[key] = existing;
+                    }
+                } else {
+                    existing.hideMarks = true;
+                    customCategories[key] = existing;
+                }
+                await App.Storage.updateCustomCategories(currentExamId, customCategories);
+                cachedExam.customCategories = customCategories;
+            });
         });
 
         // Edit buttons — after editing, showCategoryEditForm's save handler returns to this modal

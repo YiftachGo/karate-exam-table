@@ -150,38 +150,43 @@ App.Utils = (function () {
         }).filter(Boolean);
     }
 
-    // --- Shared Gasshuku list widget ---
-    // Used by both the student invite form and the trainer edit page so they stay in sync.
+    function isBlackBeltRank(rank) {
+        return typeof rank === 'string' && rank.indexOf('דאן') !== -1;
+    }
 
-    function _renderGasshukuRow(idx, location, date) {
+    // --- Shared location+date list widget ---
+    // Used by both gasshukus and belt-trainings. Both share the same shape — [{ location, date }].
+
+    function _renderLDRow(rowClass, removeBtnClass, idx, location, date, locationPlaceholder) {
         var t = App.I18n.t;
-        var html = '<div class="gasshuku-row" data-idx="' + idx + '">';
-        html += '<input type="text" class="gasshuku-location" placeholder="' + t('gasshukuLocation') + '" value="' + escapeHtml(location || '') + '">';
-        html += '<input type="date" class="gasshuku-date" value="' + escapeHtml(date || '') + '">';
-        html += '<button type="button" class="btn btn-sm btn-danger gasshuku-remove-btn" title="' + t('removeGasshuku') + '">&#10005;</button>';
+        var html = '<div class="' + rowClass + '" data-idx="' + idx + '">';
+        html += '<input type="text" class="' + rowClass + '-location" placeholder="' + locationPlaceholder + '" value="' + escapeHtml(location || '') + '">';
+        html += '<input type="date" class="' + rowClass + '-date" value="' + escapeHtml(date || '') + '">';
+        html += '<button type="button" class="btn btn-sm btn-danger ' + removeBtnClass + '" title="' + t('removeGasshuku') + '">&#10005;</button>';
         html += '</div>';
         return html;
     }
 
-    // Populates `listEl` (container for rows) with initial gasshuku rows and
-    // wires up the associated "+ add" button (`addBtnEl`). Both elements must
-    // exist in the DOM when this is called.
-    function renderGasshukuList(listEl, addBtnEl, initial) {
+    function renderLocationDateList(listEl, addBtnEl, initial, opts) {
         if (!listEl) return;
+        opts = opts || {};
+        var rowClass = opts.rowClass || 'gasshuku-row';
+        var removeBtnClass = opts.removeBtnClass || 'gasshuku-remove-btn';
+        var locationPlaceholder = opts.locationPlaceholder || App.I18n.t('gasshukuLocation');
         var gList = Array.isArray(initial) && initial.length ? initial : [{ location: '', date: '' }];
         var html = '';
-        gList.forEach(function (g, idx) { html += _renderGasshukuRow(idx, g.location || '', g.date || ''); });
+        gList.forEach(function (g, idx) { html += _renderLDRow(rowClass, removeBtnClass, idx, g.location || '', g.date || '', locationPlaceholder); });
         listEl.innerHTML = html;
 
         function attachRemoveHandlers() {
-            listEl.querySelectorAll('.gasshuku-remove-btn').forEach(function (btn) {
+            listEl.querySelectorAll('.' + removeBtnClass).forEach(function (btn) {
                 if (btn.dataset.bound) return;
                 btn.dataset.bound = '1';
                 btn.addEventListener('click', function () {
-                    var row = btn.closest('.gasshuku-row');
+                    var row = btn.closest('.' + rowClass);
                     if (row) row.remove();
-                    if (listEl.querySelectorAll('.gasshuku-row').length === 0) {
-                        listEl.insertAdjacentHTML('beforeend', _renderGasshukuRow(0, '', ''));
+                    if (listEl.querySelectorAll('.' + rowClass).length === 0) {
+                        listEl.insertAdjacentHTML('beforeend', _renderLDRow(rowClass, removeBtnClass, 0, '', '', locationPlaceholder));
                         attachRemoveHandlers();
                     }
                 });
@@ -192,22 +197,40 @@ App.Utils = (function () {
         if (addBtnEl && !addBtnEl.dataset.bound) {
             addBtnEl.dataset.bound = '1';
             addBtnEl.addEventListener('click', function () {
-                var idx = listEl.querySelectorAll('.gasshuku-row').length;
-                listEl.insertAdjacentHTML('beforeend', _renderGasshukuRow(idx, '', ''));
+                var idx = listEl.querySelectorAll('.' + rowClass).length;
+                listEl.insertAdjacentHTML('beforeend', _renderLDRow(rowClass, removeBtnClass, idx, '', '', locationPlaceholder));
                 attachRemoveHandlers();
             });
         }
     }
 
-    function readGasshukuList(listEl) {
-        var rows = listEl ? listEl.querySelectorAll('.gasshuku-row') : [];
+    function readLocationDateList(listEl, opts) {
+        opts = opts || {};
+        var rowClass = opts.rowClass || 'gasshuku-row';
+        var rows = listEl ? listEl.querySelectorAll('.' + rowClass) : [];
         var result = [];
         rows.forEach(function (row) {
-            var loc = row.querySelector('.gasshuku-location').value.trim();
-            var dt = row.querySelector('.gasshuku-date').value;
+            var loc = row.querySelector('.' + rowClass + '-location').value.trim();
+            var dt = row.querySelector('.' + rowClass + '-date').value;
             if (loc || dt) result.push({ location: loc, date: dt });
         });
         return result;
+    }
+
+    function renderGasshukuList(listEl, addBtnEl, initial) {
+        renderLocationDateList(listEl, addBtnEl, initial);
+    }
+    function readGasshukuList(listEl) {
+        return readLocationDateList(listEl);
+    }
+    function renderBeltTrainingsList(listEl, addBtnEl, initial) {
+        renderLocationDateList(listEl, addBtnEl, initial, {
+            rowClass: 'belt-row',
+            removeBtnClass: 'belt-remove-btn'
+        });
+    }
+    function readBeltTrainingsList(listEl) {
+        return readLocationDateList(listEl, { rowClass: 'belt-row' });
     }
 
     return {
@@ -223,6 +246,11 @@ App.Utils = (function () {
         RANK_GROUPS: RANK_GROUPS,
         buildRankSelect: buildRankSelect,
         renderGasshukuList: renderGasshukuList,
-        readGasshukuList: readGasshukuList
+        readGasshukuList: readGasshukuList,
+        renderLocationDateList: renderLocationDateList,
+        readLocationDateList: readLocationDateList,
+        renderBeltTrainingsList: renderBeltTrainingsList,
+        readBeltTrainingsList: readBeltTrainingsList,
+        isBlackBeltRank: isBlackBeltRank
     };
 })();

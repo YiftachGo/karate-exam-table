@@ -152,25 +152,29 @@
     margin-bottom: 8px;
 }
 
-/* Gasshuku list rows */
-.gasshuku-row {
+/* Gasshuku / Belt-training list rows */
+.gasshuku-row,
+.belt-row {
     display: flex;
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
 }
 
-.gasshuku-row .gasshuku-location {
+.gasshuku-row .gasshuku-location,
+.belt-row .belt-row-location {
     flex: 2;
     min-width: 0;
 }
 
-.gasshuku-row .gasshuku-date {
+.gasshuku-row .gasshuku-date,
+.belt-row .belt-row-date {
     flex: 1;
     min-width: 0;
 }
 
-.gasshuku-row .gasshuku-remove-btn {
+.gasshuku-row .gasshuku-remove-btn,
+.belt-row .belt-remove-btn {
     flex-shrink: 0;
     padding: 4px 8px;
     font-size: 0.8rem;

@@ -90,7 +90,11 @@ App.ExamineeDetail = (function () {
         // Shodan and above sub-section
         html += '<div class="shodan-subsection">';
         html += '<h4 class="subsection-title">' + t('shodanAndAbove') + '</h4>';
-        html += formGroup('beltTrainings', t('beltTrainings'), 'number', ex.beltTrainings);
+        html += '<div class="form-group">';
+        html += '<label>' + t('beltTrainings') + '</label>';
+        html += '<div id="belt-list"></div>';
+        html += '<button type="button" class="btn btn-sm btn-outline" id="btn-add-belt">+ ' + t('addBeltTraining') + '</button>';
+        html += '</div>';
 
         html += '<div class="form-group">';
         html += '<label>' + t('formSubmitted') + '</label>';
@@ -122,6 +126,11 @@ App.ExamineeDetail = (function () {
             document.getElementById('gasshuku-list'),
             document.getElementById('btn-add-gasshuku'),
             ex.gasshukus || []
+        );
+        App.Utils.renderBeltTrainingsList(
+            document.getElementById('belt-list'),
+            document.getElementById('btn-add-belt'),
+            Array.isArray(ex.beltTrainings) ? ex.beltTrainings : []
         );
         bindEvents(examId, examineeId);
     }
@@ -217,7 +226,7 @@ App.ExamineeDetail = (function () {
             trainingStartDate: document.getElementById('field-trainingStartDate').value,
             lastExamDate: document.getElementById('field-lastExamDate').value,
             trainingsPerWeek: document.getElementById('field-trainingsPerWeek').value,
-            beltTrainings: document.getElementById('field-beltTrainings').value,
+            beltTrainings: App.Utils.readBeltTrainingsList(document.getElementById('belt-list')),
             gasshukus: App.Utils.readGasshukuList(document.getElementById('gasshuku-list')),
             examPayment: document.getElementById('field-examPayment').value,
             formSubmitted: document.getElementById('field-formSubmitted').value,
@@ -225,6 +234,7 @@ App.ExamineeDetail = (function () {
         };
         await App.Storage.updateExaminee(examId, examineeId, data);
         App.showToast(App.I18n.t('dataSaved'));
+        App.Router.navigate('#/exam/' + examId);
     }
 
     return { render: render };

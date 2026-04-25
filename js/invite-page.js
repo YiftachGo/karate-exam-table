@@ -157,7 +157,12 @@ App.InvitePage = (function () {
 
         html += '<div class="shodan-subsection">';
         html += '<h4 class="subsection-title">' + t('shodanAndAbove') + '</h4>';
-        html += regField('beltTrainings', t('beltTrainings'), 'number', false, prefill.beltTrainings);
+        var isDan = App.Utils.isBlackBeltRank(prefill.rank);
+        html += '<div class="form-group">';
+        html += '<label id="belt-list-label">' + t('beltTrainings') + (isDan ? ' <span class="required-star">*</span>' : '') + '</label>';
+        html += '<div id="belt-list"></div>';
+        html += '<button type="button" class="btn btn-sm btn-outline" id="btn-add-belt">+ ' + t('addBeltTraining') + '</button>';
+        html += '</div>';
         html += '</div>';
         html += '</div>';
 
@@ -185,7 +190,7 @@ App.InvitePage = (function () {
             trainingStartDate: document.getElementById('reg-trainingStartDate').value,
             lastExamDate: document.getElementById('reg-lastExamDate').value,
             trainingsPerWeek: document.getElementById('reg-trainingsPerWeek').value,
-            beltTrainings: document.getElementById('reg-beltTrainings').value,
+            beltTrainings: App.Utils.readBeltTrainingsList(document.getElementById('belt-list')),
             gasshukus: App.Utils.readGasshukuList(document.getElementById('gasshuku-list'))
         };
     }
@@ -199,7 +204,7 @@ App.InvitePage = (function () {
 
     // `onPhotoSelected(file)` returns a Promise<string> with the final photoUrl to store.
     // `existingPhotoUrl` lets us skip the photo requirement in edit mode if a photo is already on file.
-    function bindPhotoAndSubmit(onPhotoSelected, onSubmit, submitLabel, existingPhotoUrl, initialGasshukus) {
+    function bindPhotoAndSubmit(onPhotoSelected, onSubmit, submitLabel, existingPhotoUrl, initialGasshukus, initialBeltTrainings) {
         var t = App.I18n.t;
         var selectedPhotoFile = null;
 
@@ -208,6 +213,22 @@ App.InvitePage = (function () {
             document.getElementById('btn-add-gasshuku'),
             initialGasshukus || []
         );
+
+        App.Utils.renderBeltTrainingsList(
+            document.getElementById('belt-list'),
+            document.getElementById('btn-add-belt'),
+            Array.isArray(initialBeltTrainings) ? initialBeltTrainings : []
+        );
+
+        // Toggle belt-trainings asterisk based on rank selection
+        var rankEl = document.getElementById('reg-rank');
+        var beltLabelEl = document.getElementById('belt-list-label');
+        function updateBeltAsterisk() {
+            if (!beltLabelEl) return;
+            var isDan = App.Utils.isBlackBeltRank(rankEl ? rankEl.value : '');
+            beltLabelEl.innerHTML = t('beltTrainings') + (isDan ? ' <span class="required-star">*</span>' : '');
+        }
+        if (rankEl) rankEl.addEventListener('change', updateBeltAsterisk);
 
         document.getElementById('reg-photo-input').addEventListener('change', function (e) {
             var file = e.target.files[0];
@@ -273,6 +294,15 @@ App.InvitePage = (function () {
                 errorEl.style.display = '';
                 return;
             }
+            if (App.Utils.isBlackBeltRank(data.rank) &&
+                (!data.beltTrainings.length ||
+                 !data.beltTrainings.some(function (b) { return b.location && b.date; }))) {
+                var bList = document.getElementById('belt-list');
+                if (bList) bList.classList.add('field-invalid');
+                errorEl.textContent = t('atLeastOneBeltTraining');
+                errorEl.style.display = '';
+                return;
+            }
 
             btn.disabled = true;
             btn.textContent = t('loading');
@@ -317,6 +347,7 @@ App.InvitePage = (function () {
             },
             t('submitRegistration'),
             null, // no existing photo for fresh registration
+            [],
             []
         );
     }
@@ -364,7 +395,8 @@ App.InvitePage = (function () {
             },
             t('saveChanges'),
             ex.photoUrl || null,
-            ex.gasshukus || []
+            ex.gasshukus || [],
+            Array.isArray(ex.beltTrainings) ? ex.beltTrainings : []
         );
     }
 

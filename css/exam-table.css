@@ -527,6 +527,18 @@ thead .sticky-col {
     gap: 4px;
 }
 
+.cat-mgr-marks-label {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
 /* Generic dropdown menu (Manage Test toolbar + category header three-dots) */
 .menu-wrapper {
     position: relative;
@@ -594,9 +606,13 @@ thead .sticky-col {
     background: rgba(255,255,255,0.3);
 }
 
-/* Dropdown inside sticky header must sit above other sticky cells */
+/* Dropdown inside sticky header must escape `.table-wrapper` overflow clipping
+   by switching to `position: fixed`. JS sets top + inset-inline-end at toggle time. */
 .menu-dropdown-cat {
-    z-index: 60;
+    position: fixed;
+    top: 0;
+    inset-inline-end: 0;
+    z-index: 1000;
     color: var(--text);
 }
 
