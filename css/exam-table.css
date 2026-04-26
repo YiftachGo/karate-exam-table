@@ -58,7 +58,12 @@
     left: 0;
 }
 
+/* Cancel horizontal sticky on the corner <th>. Browsers only honor one axis
+   per sticky table cell, so having right:0 (from .sticky-col) prevented top:0
+   from working. Body category cells (in tbody) are unaffected — they keep right:0. */
 thead .sticky-col {
+    right: auto;
+    left: auto;
     z-index: 4;
     background: var(--primary-dark);
 }
@@ -74,19 +79,11 @@ thead .sticky-col {
     box-shadow: 4px 0 8px rgba(0,0,0,0.05);
 }
 
-/* Top-left corner cell — must stay frozen while scrolling in BOTH axes,
-   so it sits on top of every other sticky cell. */
+/* Corner cell — vertical sticky only (top:0 inherited from thead th).
+   z-index above all other sticky cells so it doesn't get covered. */
 .category-header {
     font-size: 0.85rem;
-    position: sticky;
-    top: 0;
-    right: 0;
     z-index: 5;
-}
-
-[dir="ltr"] .category-header {
-    right: auto;
-    left: 0;
 }
 
 .examinee-header {
