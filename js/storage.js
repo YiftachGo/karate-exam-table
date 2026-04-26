@@ -135,13 +135,15 @@ App.Storage = (function () {
         function pack(snap) {
             return snap.docs.map(function (d) { return { id: d.id, data: d.data() }; });
         }
-        return {
+        var snapshot = {
             examId: examId,
             examData: results[0].exists ? results[0].data() : null,
             examinees: pack(results[1]),
             grades: pack(results[2]),
             generalRemarks: pack(results[3])
         };
+        console.log('[captureExamForRestore] captured:', snapshot.examinees.length, 'examinees,', snapshot.grades.length, 'grades,', snapshot.generalRemarks.length, 'remarks');
+        return snapshot;
     }
 
     async function restoreExamFromSnapshot(snapshot) {
@@ -158,9 +160,11 @@ App.Storage = (function () {
                 await batch.commit();
             }
         }
+        console.log('[restoreExamFromSnapshot] restoring:', snapshot.examinees.length, 'examinees,', snapshot.grades.length, 'grades,', snapshot.generalRemarks.length, 'remarks');
         await writeAll('examinees', snapshot.examinees);
         await writeAll('grades', snapshot.grades);
         await writeAll('generalRemarks', snapshot.generalRemarks);
+        console.log('[restoreExamFromSnapshot] done');
     }
 
     // Restores a previously deleted examinee document with its original ID.

@@ -99,8 +99,13 @@ App.ExamList = (function () {
                     await App.Storage.deleteExam(examId);
                     render();
                     App.Undo.push('examDeleted', async function () {
-                        await App.Storage.restoreExamFromSnapshot(snapshot);
-                        render();
+                        try {
+                            await App.Storage.restoreExamFromSnapshot(snapshot);
+                            render();
+                        } catch (err) {
+                            console.error('Undo restore failed:', err);
+                            alert(t('error') + ': ' + (err.message || err.code || err));
+                        }
                     });
                 } catch (err) {
                     console.error('deleteExam failed:', err);
