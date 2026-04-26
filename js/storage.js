@@ -105,14 +105,22 @@ App.Storage = (function () {
     }
 
     async function deleteExam(examId) {
-        // Delete subcollections first
-        var examineesSnap = await App.db.collection('exams').doc(examId).collection('examinees').get();
-        var gradesSnap = await App.db.collection('exams').doc(examId).collection('grades').get();
-        var batch = App.db.batch();
-        examineesSnap.docs.forEach(function (d) { batch.delete(d.ref); });
-        gradesSnap.docs.forEach(function (d) { batch.delete(d.ref); });
-        await batch.commit();
-        await App.db.collection('exams').doc(examId).delete();
+        var examRef = App.db.collection('exams').doc(examId);
+        var snaps = await Promise.all([
+            examRef.collection('examinees').get(),
+            examRef.collection('grades').get(),
+            examRef.collection('generalRemarks').get()
+        ]);
+        var allDocs = [];
+        snaps.forEach(function (snap) { snap.docs.forEach(function (d) { allDocs.push(d.ref); }); });
+
+        // Firestore batch limit is 500 — chunk accordingly
+        for (var i = 0; i < allDocs.length; i += 500) {
+            var batch = App.db.batch();
+            allDocs.slice(i, i + 500).forEach(function (ref) { batch.delete(ref); });
+            await batch.commit();
+        }
+        await examRef.delete();
     }
 
     // Restores a previously deleted exam document (subcollections were never deleted).

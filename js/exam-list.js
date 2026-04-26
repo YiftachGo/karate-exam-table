@@ -94,14 +94,18 @@ App.ExamList = (function () {
                 e.stopPropagation();
                 if (!confirm(t('confirmDeleteExam'))) return;
                 var examId = btn.dataset.id;
-                // Fetch exam data before deletion so we can restore it
-                var examData = await App.Storage.getExam(examId);
-                await App.Storage.deleteExam(examId);
-                render();
-                App.Undo.push('examDeleted', async function () {
-                    await App.Storage.restoreExam(examId, examData);
+                try {
+                    var examData = await App.Storage.getExam(examId);
+                    await App.Storage.deleteExam(examId);
                     render();
-                });
+                    App.Undo.push('examDeleted', async function () {
+                        await App.Storage.restoreExam(examId, examData);
+                        render();
+                    });
+                } catch (err) {
+                    console.error('deleteExam failed:', err);
+                    alert(t('error') + ': ' + (err.message || err.code || err));
+                }
             });
         });
 
