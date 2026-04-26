@@ -95,11 +95,11 @@ App.ExamList = (function () {
                 if (!confirm(t('confirmDeleteExam'))) return;
                 var examId = btn.dataset.id;
                 try {
-                    var examData = await App.Storage.getExam(examId);
+                    var snapshot = await App.Storage.captureExamForRestore(examId);
                     await App.Storage.deleteExam(examId);
                     render();
                     App.Undo.push('examDeleted', async function () {
-                        await App.Storage.restoreExam(examId, examData);
+                        await App.Storage.restoreExamFromSnapshot(snapshot);
                         render();
                     });
                 } catch (err) {

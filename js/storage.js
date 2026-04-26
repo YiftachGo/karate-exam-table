@@ -123,14 +123,44 @@ App.Storage = (function () {
         await examRef.delete();
     }
 
-    // Restores a previously deleted exam document (subcollections were never deleted).
-    // Used by the undo toast after exam deletion.
-    async function restoreExam(examId, data) {
-        var payload = Object.assign({}, data);
-        delete payload.id;
-        delete payload.examinees;
-        delete payload.allGrades;
-        await App.db.collection('exams').doc(examId).set(payload);
+    // Snapshot the exam doc + all subcollections so an undo can fully restore it.
+    async function captureExamForRestore(examId) {
+        var examRef = App.db.collection('exams').doc(examId);
+        var results = await Promise.all([
+            examRef.get(),
+            examRef.collection('examinees').get(),
+            examRef.collection('grades').get(),
+            examRef.collection('generalRemarks').get()
+        ]);
+        function pack(snap) {
+            return snap.docs.map(function (d) { return { id: d.id, data: d.data() }; });
+        }
+        return {
+            examId: examId,
+            examData: results[0].exists ? results[0].data() : null,
+            examinees: pack(results[1]),
+            grades: pack(results[2]),
+            generalRemarks: pack(results[3])
+        };
+    }
+
+    async function restoreExamFromSnapshot(snapshot) {
+        if (!snapshot || !snapshot.examData) return;
+        var examRef = App.db.collection('exams').doc(snapshot.examId);
+        await examRef.set(snapshot.examData);
+
+        async function writeAll(collName, docs) {
+            for (var i = 0; i < docs.length; i += 500) {
+                var batch = App.db.batch();
+                docs.slice(i, i + 500).forEach(function (entry) {
+                    batch.set(examRef.collection(collName).doc(entry.id), entry.data);
+                });
+                await batch.commit();
+            }
+        }
+        await writeAll('examinees', snapshot.examinees);
+        await writeAll('grades', snapshot.grades);
+        await writeAll('generalRemarks', snapshot.generalRemarks);
     }
 
     // Restores a previously deleted examinee document with its original ID.
@@ -826,7 +856,8 @@ App.Storage = (function () {
         createExam: createExam,
         updateExam: updateExam,
         deleteExam: deleteExam,
-        restoreExam: restoreExam,
+        captureExamForRestore: captureExamForRestore,
+        restoreExamFromSnapshot: restoreExamFromSnapshot,
         restoreExaminee: restoreExaminee,
         saveGeneralRemarks: saveGeneralRemarks,
         getGeneralRemarks: getGeneralRemarks,
