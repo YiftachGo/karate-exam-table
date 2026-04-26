@@ -729,10 +729,29 @@ App.ExamTable = (function () {
         var menu = document.getElementById(menuId);
         if (!trigger || !menu) return;
         var fixed = opts && opts.fixed;
+        // Remember menu's original DOM position so we can restore it on close.
+        var origParent = menu.parentNode;
+        var origNext = menu.nextSibling;
 
+        function reposition() {
+            var rect = trigger.getBoundingClientRect();
+            menu.style.top = (rect.bottom + 4) + 'px';
+            menu.style.right = (window.innerWidth - rect.right) + 'px';
+            menu.style.left = 'auto';
+            menu.style.insetInlineEnd = 'auto';
+        }
+        function onScrollOrResize() { close(); }
         function close() {
             menu.classList.remove('open');
             document.removeEventListener('click', outsideHandler, true);
+            if (fixed) {
+                window.removeEventListener('scroll', onScrollOrResize, true);
+                window.removeEventListener('resize', onScrollOrResize);
+                // Restore menu to its original parent so future opens reuse the same node.
+                if (origParent && menu.parentNode !== origParent) {
+                    origParent.insertBefore(menu, origNext);
+                }
+            }
         }
         function outsideHandler(e) {
             if (!menu.contains(e.target) && e.target !== trigger) close();
@@ -744,9 +763,13 @@ App.ExamTable = (function () {
             document.querySelectorAll('.menu-dropdown.open').forEach(function (m) { m.classList.remove('open'); });
             if (!wasOpen) {
                 if (fixed) {
-                    var rect = trigger.getBoundingClientRect();
-                    menu.style.top = (rect.bottom + 4) + 'px';
-                    menu.style.insetInlineEnd = (window.innerWidth - rect.right) + 'px';
+                    // Portal menu to <body> so it escapes any sticky/overflow stacking context.
+                    if (menu.parentNode !== document.body) {
+                        document.body.appendChild(menu);
+                    }
+                    reposition();
+                    window.addEventListener('scroll', onScrollOrResize, true);
+                    window.addEventListener('resize', onScrollOrResize);
                 }
                 menu.classList.add('open');
                 setTimeout(function () { document.addEventListener('click', outsideHandler, true); }, 0);

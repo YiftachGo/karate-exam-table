@@ -74,8 +74,19 @@ thead .sticky-col {
     box-shadow: 4px 0 8px rgba(0,0,0,0.05);
 }
 
+/* Top-left corner cell — must stay frozen while scrolling in BOTH axes,
+   so it sits on top of every other sticky cell. */
 .category-header {
     font-size: 0.85rem;
+    position: sticky;
+    top: 0;
+    right: 0;
+    z-index: 5;
+}
+
+[dir="ltr"] .category-header {
+    right: auto;
+    left: 0;
 }
 
 .examinee-header {
@@ -607,11 +618,13 @@ thead .sticky-col {
 }
 
 /* Dropdown inside sticky header must escape `.table-wrapper` overflow clipping
-   by switching to `position: fixed`. JS sets top + inset-inline-end at toggle time. */
+   by switching to `position: fixed`. JS sets explicit top + right at toggle time
+   (physical, not logical, so RTL doesn't flip the placement to the wrong side). */
 .menu-dropdown-cat {
     position: fixed;
     top: 0;
-    inset-inline-end: 0;
+    right: 0;
+    inset-inline-end: auto;
     z-index: 1000;
     color: var(--text);
 }
