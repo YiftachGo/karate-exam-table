@@ -58,12 +58,7 @@
     left: 0;
 }
 
-/* Cancel horizontal sticky on the corner <th>. Browsers only honor one axis
-   per sticky table cell, so having right:0 (from .sticky-col) prevented top:0
-   from working. Body category cells (in tbody) are unaffected — they keep right:0. */
 thead .sticky-col {
-    right: auto;
-    left: auto;
     z-index: 4;
     background: var(--primary-dark);
 }
@@ -79,10 +74,12 @@ thead .sticky-col {
     box-shadow: 4px 0 8px rgba(0,0,0,0.05);
 }
 
-/* Corner cell — vertical sticky only (top:0 inherited from thead th).
-   z-index above all other sticky cells so it doesn't get covered. */
+/* Corner cell — horizontal sticky only (right:0 from .sticky-col).
+   Cancel top:0 from the thead th rule so the browser picks right:0 as the
+   sole sticky axis and doesn't silently drop either. */
 .category-header {
     font-size: 0.85rem;
+    top: auto;
     z-index: 5;
 }
 
