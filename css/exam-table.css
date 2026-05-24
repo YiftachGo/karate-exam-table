@@ -2,6 +2,28 @@
     margin: 0;
 }
 
+.trainer-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 16px 8px;
+    flex-wrap: wrap;
+}
+
+.trainer-chips-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.trainer-chip {
+    font-size: 0.8rem;
+    background: var(--primary-light, #e8f0fe);
+    color: var(--primary-dark);
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-weight: 500;
+}
+
 .exam-date-badge {
     font-size: 0.85rem;
     color: var(--text-secondary);

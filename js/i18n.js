@@ -207,7 +207,16 @@ App.I18n = (function () {
             confirmDeletePreset: 'למחוק תבנית זו?',
             noPresets: 'אין תבניות שמורות',
             manageTest: 'ניהול מבחן',
-            options: 'אפשרויות'
+            options: 'אפשרויות',
+            // Examiners display
+            examiners: 'בוחנים',
+            // Exam list search & sort
+            searchExam: 'חיפוש מבחן...',
+            sortNewest: 'חדש לישן',
+            sortOldest: 'ישן לחדש',
+            sortNameAZ: 'שם א-ת',
+            sortNameZA: 'שם ת-א',
+            sortCount: 'לפי מספר נבחנים'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -409,7 +418,16 @@ App.I18n = (function () {
             confirmDeletePreset: 'Delete this preset?',
             noPresets: 'No saved presets',
             manageTest: 'Manage Test',
-            options: 'Options'
+            options: 'Options',
+            // Examiners display
+            examiners: 'Examiners',
+            // Exam list search & sort
+            searchExam: 'Search exam...',
+            sortNewest: 'Newest first',
+            sortOldest: 'Oldest first',
+            sortNameAZ: 'Name A-Z',
+            sortNameZA: 'Name Z-A',
+            sortCount: 'Most examinees'
         }
     };
 

@@ -127,6 +127,17 @@ App.ExamTable = (function () {
         html += '<input type="file" id="import-students-file" accept=".xlsx,.csv,.json" style="display:none">';
         html += '</div>';
 
+        // Trainer chips row
+        if (trainerIds.length > 0) {
+            html += '<div class="trainer-chips">';
+            html += '<span class="trainer-chips-label">' + t('examiners') + ':</span>';
+            trainerIds.forEach(function (id) {
+                var name = trainerNames[id] || id.slice(0, 6);
+                html += '<span class="trainer-chip">' + App.Utils.escapeHtml(name) + '</span>';
+            });
+            html += '</div>';
+        }
+
         if (examinees.length === 0) {
             html += '<div class="empty-state">';
             html += '<p>' + t('addExaminee') + '</p>';

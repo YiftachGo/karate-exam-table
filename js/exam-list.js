@@ -1,6 +1,9 @@
 var App = window.App || {};
 
 App.ExamList = (function () {
+    var _searchTerm = '';
+    var _sortKey = 'dateDesc';
+
     async function render() {
         var t = App.I18n.t;
         var container = document.getElementById('app');
@@ -15,16 +18,36 @@ App.ExamList = (function () {
         html += '<button class="btn btn-primary" id="btn-new-exam">+ ' + t('newExam') + '</button>';
         html += '<button class="btn btn-outline" id="btn-import-exam">' + t('importExam') + '</button>';
         html += '<input type="file" id="import-file" accept=".json" style="display:none">';
+        html += '<input type="search" id="exam-search" class="exam-search-input" placeholder="' + t('searchExam') + '" value="' + App.Utils.escapeHtml(_searchTerm) + '">';
+        html += '<select id="exam-sort" class="exam-sort-select">';
+        html += '<option value="dateDesc"' + (_sortKey === 'dateDesc' ? ' selected' : '') + '>' + t('sortNewest') + '</option>';
+        html += '<option value="dateAsc"'  + (_sortKey === 'dateAsc'  ? ' selected' : '') + '>' + t('sortOldest') + '</option>';
+        html += '<option value="nameAsc"'  + (_sortKey === 'nameAsc'  ? ' selected' : '') + '>' + t('sortNameAZ') + '</option>';
+        html += '<option value="nameDesc"' + (_sortKey === 'nameDesc' ? ' selected' : '') + '>' + t('sortNameZA') + '</option>';
+        html += '<option value="count"'    + (_sortKey === 'count'    ? ' selected' : '') + '>' + t('sortCount')  + '</option>';
+        html += '</select>';
         html += '</div>';
 
-        if (exams.length === 0) {
+        // Filter and sort
+        var filtered = exams.filter(function (e) {
+            return !_searchTerm || (e.name || '').toLowerCase().indexOf(_searchTerm.toLowerCase()) !== -1;
+        });
+        filtered.sort(function (a, b) {
+            if (_sortKey === 'dateAsc')  return (a.date || '') < (b.date || '') ? -1 : 1;
+            if (_sortKey === 'nameAsc')  return (a.name || '').localeCompare(b.name || '');
+            if (_sortKey === 'nameDesc') return (b.name || '').localeCompare(a.name || '');
+            if (_sortKey === 'count')    return (b.examineeCount || 0) - (a.examineeCount || 0);
+            return (b.date || '') > (a.date || '') ? 1 : -1; // dateDesc
+        });
+
+        if (filtered.length === 0) {
             html += '<div class="empty-state">';
             html += '<div class="empty-icon">&#128203;</div>';
             html += '<p>' + t('noExams') + '</p>';
             html += '</div>';
         } else {
             html += '<div class="exam-grid">';
-            exams.forEach(function (exam) {
+            filtered.forEach(function (exam) {
                 var isOwner = exam.ownerId === App.Auth.getUserId();
                 html += '<div class="exam-card" data-id="' + exam.id + '">';
                 html += '<div class="exam-card-header">';
@@ -51,12 +74,28 @@ App.ExamList = (function () {
         container.innerHTML = html;
 
         bindEvents();
+
+        // Restore focus to search input if user was typing
+        if (_searchTerm) {
+            var searchEl = document.getElementById('exam-search');
+            if (searchEl) { searchEl.focus(); searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length); }
+        }
     }
 
     function bindEvents() {
         var t = App.I18n.t;
 
         document.getElementById('btn-new-exam').addEventListener('click', showNewExamModal);
+
+        document.getElementById('exam-search').addEventListener('input', function (e) {
+            _searchTerm = e.target.value;
+            render();
+        });
+
+        document.getElementById('exam-sort').addEventListener('change', function (e) {
+            _sortKey = e.target.value;
+            render();
+        });
 
         document.getElementById('btn-import-exam').addEventListener('click', function () {
             document.getElementById('import-file').click();
