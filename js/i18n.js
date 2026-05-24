@@ -216,7 +216,16 @@ App.I18n = (function () {
             sortOldest: 'ישן לחדש',
             sortNameAZ: 'שם א-ת',
             sortNameZA: 'שם ת-א',
-            sortCount: 'לפי מספר נבחנים'
+            sortCount: 'לפי מספר נבחנים',
+            // Drawing mode
+            drawMode: 'מצב ציור',
+            textMode: 'מצב טקסט',
+            pen: 'עט',
+            eraser: 'מחק',
+            clear: 'נקה',
+            switchToDraw: 'עבור לציור',
+            switchToText: 'עבור לטקסט',
+            tapToDraw: 'הקש כדי לצייר'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -427,7 +436,16 @@ App.I18n = (function () {
             sortOldest: 'Oldest first',
             sortNameAZ: 'Name A-Z',
             sortNameZA: 'Name Z-A',
-            sortCount: 'Most examinees'
+            sortCount: 'Most examinees',
+            // Drawing mode
+            drawMode: 'Draw mode',
+            textMode: 'Text mode',
+            pen: 'Pen',
+            eraser: 'Eraser',
+            clear: 'Clear',
+            switchToDraw: 'Switch to drawing',
+            switchToText: 'Switch to text',
+            tapToDraw: 'Tap to draw'
         }
     };
 

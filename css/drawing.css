@@ -1,0 +1,173 @@
+/* Drawing module — modal/inline canvas + pen toggle on text fields */
+
+.drawing-overlay {
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-overlay-modal {
+    position: fixed;
+    inset: 0;
+    padding: 16px;
+}
+
+.drawing-overlay-inline {
+    position: fixed;
+    inset: 0;
+    padding: 16px;
+}
+
+.drawing-box {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.drawing-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.drawing-title {
+    font-weight: 600;
+    color: var(--primary-dark, #1a237e);
+    font-size: 1rem;
+}
+
+.drawing-toolbar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.drawing-tool-btn {
+    height: 38px;
+    min-width: 44px;
+    padding: 0 10px;
+    border: 1px solid var(--border, #e0e0e0);
+    background: var(--bg-card, #fff);
+    border-radius: 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1;
+}
+
+.drawing-tool-btn:hover {
+    background: var(--bg, #f5f5f5);
+}
+
+.drawing-tool-btn.active {
+    background: var(--primary, #1a73e8);
+    color: #fff;
+    border-color: var(--primary, #1a73e8);
+}
+
+.drawing-canvas {
+    background: #fff;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    display: block;
+    max-width: 100%;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.drawing-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* Pen toggle button on text fields */
+.pen-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin: 2px 0;
+    border: 1px solid var(--border, #e0e0e0);
+    background: var(--bg-card, #fff);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: all 0.15s;
+}
+
+.pen-toggle-btn:hover {
+    background: var(--primary-light, #e8f0fe);
+    border-color: var(--primary, #1a73e8);
+}
+
+.pen-toggle-btn.active {
+    background: var(--primary, #1a73e8);
+    color: #fff;
+    border-color: var(--primary, #1a73e8);
+}
+
+/* Drawing thumbnail shown inside cell when mode === 'draw' */
+.drawing-thumbnail {
+    display: block;
+    max-width: 100%;
+    max-height: 140px;
+    width: auto;
+    height: auto;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 4px;
+    background: #fff;
+    margin-top: 4px;
+    cursor: pointer;
+}
+
+.drawing-thumbnail:hover {
+    border-color: var(--primary, #1a73e8);
+}
+
+/* Wrapper combining textarea/thumbnail + pen toggle */
+.field-with-drawing {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field-with-drawing-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.field-with-drawing-row > textarea,
+.field-with-drawing-row > .drawing-thumbnail-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+
+.drawing-thumbnail-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Recommendation export */
+.rec-drawing {
+    display: block;
+    max-width: 100%;
+    max-height: 240px;
+    height: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fff;
+    margin: 4px 0;
+}

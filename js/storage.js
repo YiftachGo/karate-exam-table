@@ -175,17 +175,22 @@ App.Storage = (function () {
     // --- General exam remarks (per trainer, in dedicated subcollection) ---
     // Path: exams/{examId}/generalRemarks/{trainerId}
 
-    async function saveGeneralRemarks(examId, text) {
+    async function saveGeneralRemarks(examId, text, opts) {
         var trainerId = App.Auth.getUserId();
         var trainerName = App.Auth.getUserName();
         var docRef = App.db.collection('exams').doc(examId)
             .collection('generalRemarks').doc(trainerId);
-        await docRef.set({
+        var payload = {
             trainerId: trainerId,
             trainerName: trainerName,
             text: text,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        };
+        if (opts) {
+            if (opts.drawing !== undefined) payload.drawing = opts.drawing;
+            if (opts.mode !== undefined) payload.mode = opts.mode;
+        }
+        await docRef.set(payload, { merge: true });
     }
 
     // Returns {[trainerId]: {name, text}} for all trainers who wrote remarks.
@@ -195,7 +200,12 @@ App.Storage = (function () {
         var result = {};
         snap.docs.forEach(function (d) {
             var data = d.data();
-            result[d.id] = { name: data.trainerName || d.id, text: data.text || '' };
+            result[d.id] = {
+                name: data.trainerName || d.id,
+                text: data.text || '',
+                drawing: data.drawing || '',
+                mode: data.mode || 'text'
+            };
         });
         return result;
     }

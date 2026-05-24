@@ -237,6 +237,8 @@ App.ExamTable = (function () {
         var myGrades = exGrades[currentUserId];
         var myMark = myGrades ? (myGrades[catKey + '_mark'] || '') : '';
         var myVal = myGrades ? (myGrades[catKey] || '') : '';
+        var myDrawing = myGrades ? (myGrades[catKey + '_drawing'] || '') : '';
+        var myMode = myGrades ? (myGrades[catKey + '_mode'] || 'text') : 'text';
 
         // Check draft overlay
         var draftData = App.Draft && App.Draft.isPrivate(currentExamId)
@@ -244,6 +246,8 @@ App.ExamTable = (function () {
             : {};
         if (draftData[catKey] !== undefined) myVal = draftData[catKey];
         if (draftData[catKey + '_mark'] !== undefined) myMark = draftData[catKey + '_mark'];
+        if (draftData[catKey + '_drawing'] !== undefined) myDrawing = draftData[catKey + '_drawing'];
+        if (draftData[catKey + '_mode'] !== undefined) myMode = draftData[catKey + '_mode'];
 
         if (!cat || !cat.hideMarks) {
             html += '<div class="competence-marks" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
@@ -253,8 +257,39 @@ App.ExamTable = (function () {
             html += '</div>';
         }
 
-        html += '<textarea class="grade-textarea" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterNotes') + '">' + App.Utils.escapeHtml(myVal) + '</textarea>';
+        html += renderFieldWithDrawing({
+            mode: myMode,
+            text: myVal,
+            drawing: myDrawing,
+            examineeId: examineeId,
+            catKey: catKey,
+            textareaClass: 'grade-textarea',
+            placeholder: t('enterNotes')
+        });
 
+        return html;
+    }
+
+    // Renders a text-or-drawing field with a pen toggle button.
+    // opts: { mode, text, drawing, examineeId, catKey, textareaClass, placeholder, fieldKey }
+    // For grade cells, pass examineeId+catKey. For general remarks, pass fieldKey instead.
+    function renderFieldWithDrawing(opts) {
+        var t = App.I18n.t;
+        var isDraw = opts.mode === 'draw';
+        var dataAttrs = '';
+        if (opts.examineeId) dataAttrs = ' data-examinee="' + opts.examineeId + '" data-category="' + opts.catKey + '"';
+        else if (opts.fieldKey) dataAttrs = ' data-field-key="' + opts.fieldKey + '"';
+
+        var html = '<div class="field-with-drawing"' + dataAttrs + '>';
+        html += '<div class="field-with-drawing-row">';
+        if (isDraw && opts.drawing) {
+            html += '<img src="' + opts.drawing + '" class="drawing-thumbnail"' + dataAttrs + ' title="' + t('switchToText') + '" alt="drawing">';
+        } else {
+            html += '<textarea class="' + (opts.textareaClass || 'grade-textarea') + '"' + dataAttrs + ' placeholder="' + (opts.placeholder || '') + '">' + App.Utils.escapeHtml(opts.text || '') + '</textarea>';
+        }
+        html += '<button class="pen-toggle-btn' + (isDraw ? ' active' : '') + '"' + dataAttrs + ' title="' + (isDraw ? t('switchToText') : t('switchToDraw')) + '" type="button">✏</button>';
+        html += '</div>';
+        html += '</div>';
         return html;
     }
 
@@ -310,7 +345,20 @@ App.ExamTable = (function () {
         html += '<button class="pf-btn pf-fail' + (myVal === 'fail' ? ' active' : '') + '" data-value="fail">' + t('fail') + '</button>';
         html += '<button class="pf-btn pf-conditional' + (isMyConditional ? ' active' : '') + '" data-value="conditional">' + t('conditionalPass') + '</button>';
         html += '</div>';
-        html += '<textarea class="condition-input' + (isMyConditional ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterCondition') + '">' + App.Utils.escapeHtml(myConditionText) + '</textarea>';
+
+        // Condition input (text or drawing). Wrapped so we can hide it together when not conditional.
+        var myCondDrawing = myGrades ? (myGrades[catKey + '_drawing'] || '') : '';
+        var myCondMode = myGrades ? (myGrades[catKey + '_mode'] || 'text') : 'text';
+        html += '<div class="condition-wrapper' + (isMyConditional ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
+        var isDraw = myCondMode === 'draw';
+        html += '<div class="field-with-drawing-row">';
+        if (isDraw && myCondDrawing) {
+            html += '<img src="' + myCondDrawing + '" class="drawing-thumbnail" data-examinee="' + examineeId + '" data-category="' + catKey + '" title="' + t('switchToText') + '" alt="condition drawing">';
+        } else {
+            html += '<textarea class="condition-input" data-examinee="' + examineeId + '" data-category="' + catKey + '" placeholder="' + t('enterCondition') + '">' + App.Utils.escapeHtml(myConditionText) + '</textarea>';
+        }
+        html += '<button class="pen-toggle-btn' + (isDraw ? ' active' : '') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '" data-passfail="1" title="' + (isDraw ? t('switchToText') : t('switchToDraw')) + '" type="button">✏</button>';
+        html += '</div></div>';
 
         // New rank dropdown — visible only when pass or conditional is active
         html += '<div class="newrank-wrapper' + (showNewRank ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
@@ -652,6 +700,7 @@ App.ExamTable = (function () {
         html += '.category { margin: 12px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; }';
         html += '.cat-name { font-weight: 700; color: #1a237e; margin-bottom: 6px; }';
         html += '.trainer-note { margin: 4px 0; padding: 4px 8px; background: #f0f0f5; border-radius: 4px; font-size: 0.9rem; }';
+        html += '.rec-drawing { display: block; max-width: 100%; max-height: 240px; height: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; margin: 4px 0; }';
         html += '.trainer-name { font-weight: 600; color: #3949ab; }';
         html += '.pass-badge { color: #2e7d32; font-weight: 700; } .fail-badge { color: #c62828; font-weight: 700; } .conditional-badge { color: #e65100; font-weight: 700; }';
         html += '.footer { margin-top: 32px; text-align: center; color: #757575; font-size: 0.8rem; }';
@@ -692,7 +741,10 @@ App.ExamTable = (function () {
             allTrainerIds.forEach(function (tid) {
                 var tGrades = exGrades[tid];
                 var val = tGrades ? (tGrades[cat.key] || '') : '';
-                if (val) {
+                var tDrawing = tGrades ? (tGrades[cat.key + '_drawing'] || '') : '';
+                var tMode = tGrades ? (tGrades[cat.key + '_mode'] || 'text') : 'text';
+                var hasDrawing = tMode === 'draw' && tDrawing;
+                if (val || hasDrawing) {
                     hasContent = true;
                     if (cat.type === 'passfail') {
                         var isConditional = val.indexOf('conditional:') === 0;
@@ -702,7 +754,11 @@ App.ExamTable = (function () {
                             cls = 'conditional-badge';
                             var condition = val.substring(12);
                             catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span>';
-                            if (condition) catHtml += ' — ' + App.Utils.escapeHtml(condition);
+                            if (hasDrawing) {
+                                catHtml += '<img src="' + tDrawing + '" class="rec-drawing" alt="">';
+                            } else if (condition) {
+                                catHtml += ' — ' + App.Utils.escapeHtml(condition);
+                            }
                             catHtml += '</div>';
                         } else {
                             label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
@@ -715,7 +771,11 @@ App.ExamTable = (function () {
                             ? '<span style="font-weight:700;color:' + (mark === 'v' ? '#2e7d32' : mark === 'q' ? '#e65100' : '#c62828') + '">' +
                               (mark === 'v' ? '✓' : mark === 'q' ? '?' : '✗') + '</span> '
                             : '';
-                        catHtml += '<div class="trainer-note">' + markHtml + App.Utils.escapeHtml(val) + '</div>';
+                        if (hasDrawing) {
+                            catHtml += '<div class="trainer-note">' + markHtml + '<img src="' + tDrawing + '" class="rec-drawing" alt=""></div>';
+                        } else {
+                            catHtml += '<div class="trainer-note">' + markHtml + App.Utils.escapeHtml(val) + '</div>';
+                        }
                     }
                 }
             });
@@ -793,6 +853,66 @@ App.ExamTable = (function () {
                 onAction(item.dataset.action);
             });
         });
+    }
+
+    // Opens the drawing canvas for a grade cell (or conditional input).
+    // The trigger element carries data-examinee and data-category attrs.
+    async function openCellDrawingCanvas(triggerEl) {
+        var t = App.I18n.t;
+        var examineeId = triggerEl.dataset.examinee;
+        var catKey = triggerEl.dataset.category;
+        var isPassFail = triggerEl.dataset.passfail === '1';
+        if (!examineeId || !catKey) return;
+
+        var exGrades = cachedGrades[examineeId] || {};
+        var myGrades = exGrades[App.Auth.getUserId()];
+        var existingDrawing = myGrades ? (myGrades[catKey + '_drawing'] || '') : '';
+        // Draft overlay
+        var draftData = App.Draft && App.Draft.isPrivate(currentExamId)
+            ? (App.Draft.getDraft(currentExamId, App.Auth.getUserId())[examineeId] || {})
+            : {};
+        if (draftData[catKey + '_drawing'] !== undefined) existingDrawing = draftData[catKey + '_drawing'];
+
+        var result = await App.Drawing.openCanvas({
+            initialDataUrl: existingDrawing,
+            title: t('drawMode')
+        });
+        if (result.action !== 'save') {
+            // If user cancelled, still allow them to "remove" drawing if they had one
+            // by leaving as text mode (only if no drawing saved). For now: just close.
+            // BUT: if they tapped pen icon for first time and cancelled, mode should stay 'text'.
+            return;
+        }
+        // Save drawing + mode → grade doc (or draft)
+        saveGrade(examineeId, catKey + '_drawing', result.dataUrl);
+        saveGrade(examineeId, catKey + '_mode', 'draw');
+        // For passfail conditional cells: ensure the value carries the conditional prefix
+        if (isPassFail) {
+            var existingVal = myGrades ? (myGrades[catKey] || '') : '';
+            if (existingVal.indexOf('conditional:') !== 0) {
+                saveGrade(examineeId, catKey, 'conditional:');
+            }
+        }
+        // Update local cache so renderTable shows the new drawing immediately
+        _patchLocalGrade(examineeId, catKey + '_drawing', result.dataUrl);
+        _patchLocalGrade(examineeId, catKey + '_mode', 'draw');
+        renderTable();
+    }
+
+    // Toggle from drawing back to text mode (used by pen icon while in draw mode).
+    function switchFieldToText(examineeId, catKey) {
+        saveGrade(examineeId, catKey + '_mode', 'text');
+        _patchLocalGrade(examineeId, catKey + '_mode', 'text');
+        renderTable();
+    }
+
+    // Updates the in-memory cachedGrades so renderTable reflects a save before the
+    // Firestore subscription fires (or for draft writes which never round-trip).
+    function _patchLocalGrade(examineeId, field, value) {
+        var userId = App.Auth.getUserId();
+        if (!cachedGrades[examineeId]) cachedGrades[examineeId] = {};
+        if (!cachedGrades[examineeId][userId]) cachedGrades[examineeId][userId] = { trainerId: userId };
+        cachedGrades[examineeId][userId][field] = value;
     }
 
     function bindEvents() {
@@ -895,6 +1015,7 @@ App.ExamTable = (function () {
         // Pass/fail buttons
         document.querySelectorAll('.passfail-selector').forEach(function (sel) {
             var cell = sel.parentElement;
+            var condWrapper = cell.querySelector('.condition-wrapper');
             var condInput = cell.querySelector('.condition-input');
             var newRankWrapper = cell.querySelector('.newrank-wrapper');
             sel.querySelectorAll('.pf-btn').forEach(function (btn) {
@@ -906,7 +1027,7 @@ App.ExamTable = (function () {
                     var currentActive = sel.querySelector('.pf-btn.active');
                     if (currentActive === btn) {
                         btn.classList.remove('active');
-                        if (condInput) condInput.classList.add('hidden');
+                        if (condWrapper) condWrapper.classList.add('hidden');
                         if (newRankWrapper) newRankWrapper.classList.add('hidden');
                         saveGrade(exId, catKey, '');
                     } else {
@@ -915,13 +1036,11 @@ App.ExamTable = (function () {
                         var showRank = (val === 'pass' || val === 'conditional');
                         if (newRankWrapper) newRankWrapper.classList.toggle('hidden', !showRank);
                         if (val === 'conditional') {
-                            if (condInput) {
-                                condInput.classList.remove('hidden');
-                                condInput.focus();
-                            }
+                            if (condWrapper) condWrapper.classList.remove('hidden');
+                            if (condInput) condInput.focus();
                             saveGrade(exId, catKey, 'conditional:' + (condInput ? condInput.value : ''));
                         } else {
-                            if (condInput) condInput.classList.add('hidden');
+                            if (condWrapper) condWrapper.classList.add('hidden');
                             saveGrade(exId, catKey, val);
                         }
                     }
@@ -933,6 +1052,30 @@ App.ExamTable = (function () {
         document.querySelectorAll('.condition-input').forEach(function (ta) {
             ta.addEventListener('input', function () {
                 saveGrade(ta.dataset.examinee, ta.dataset.category, 'conditional:' + ta.value);
+            });
+        });
+
+        // Pen toggle buttons on grade cells / conditional inputs
+        document.querySelectorAll('.pen-toggle-btn').forEach(function (btn) {
+            // Skip already-bound buttons in modals (we bind those separately)
+            if (!btn.dataset.examinee) return;
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                // If already in draw mode, switch back to text mode
+                if (btn.classList.contains('active')) {
+                    switchFieldToText(btn.dataset.examinee, btn.dataset.category);
+                } else {
+                    openCellDrawingCanvas(btn);
+                }
+            });
+        });
+
+        // Tap on existing drawing thumbnails reopens the canvas with the current drawing
+        document.querySelectorAll('.drawing-thumbnail').forEach(function (img) {
+            if (!img.dataset.examinee) return;
+            img.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openCellDrawingCanvas(img);
             });
         });
 
@@ -1389,45 +1532,109 @@ App.ExamTable = (function () {
         modalContainer.innerHTML = '<div class="modal-overlay"><div class="modal"><p>' + t('loading') + '</p></div></div>';
 
         var allRemarks = await App.Storage.getGeneralRemarks(currentExamId);
-        var myText = (allRemarks[userId] && allRemarks[userId].text) || '';
+        var myEntry = allRemarks[userId] || {};
+        var myText = myEntry.text || '';
+        var myDrawing = myEntry.drawing || '';
+        var myMode = myEntry.mode || 'text';
         var otherEntries = Object.entries(allRemarks).filter(function (kv) { return kv[0] !== userId; });
 
-        var html = '<div class="modal-overlay" id="remarks-overlay"><div class="modal">';
-        html += '<h2>' + t('generalRemarks') + '</h2>';
-        html += '<div class="form-group">';
-        html += '<label>' + t('yourRemarks') + '</label>';
-        html += '<textarea id="my-general-remarks" rows="5" style="width:100%;resize:vertical">' + App.Utils.escapeHtml(myText) + '</textarea>';
-        html += '</div>';
+        // Local state held in closure (so re-renders inside modal work without persistence yet)
+        var state = { text: myText, drawing: myDrawing, mode: myMode };
 
-        if (otherEntries.length > 0) {
+        function renderModal() {
+            var isDraw = state.mode === 'draw';
+            var html = '<div class="modal-overlay" id="remarks-overlay"><div class="modal">';
+            html += '<h2>' + t('generalRemarks') + '</h2>';
             html += '<div class="form-group">';
-            html += '<label>' + t('othersRemarks') + '</label>';
-            otherEntries.forEach(function (kv) {
-                var entry = kv[1];
-                if (!entry.text) return;
-                html += '<div class="other-trainer-note" style="margin-bottom:6px">';
-                html += '<span class="trainer-label">' + App.Utils.escapeHtml(entry.name) + ':</span>';
-                html += '<span class="trainer-text" style="white-space:pre-wrap">' + App.Utils.escapeHtml(entry.text) + '</span>';
-                html += '</div>';
-            });
+            html += '<label>' + t('yourRemarks') + '</label>';
+            html += '<div class="field-with-drawing-row">';
+            if (isDraw && state.drawing) {
+                html += '<img src="' + state.drawing + '" id="remarks-drawing-thumb" class="drawing-thumbnail" style="max-height:200px" alt="drawing">';
+            } else {
+                html += '<textarea id="my-general-remarks" rows="5" style="width:100%;resize:vertical">' + App.Utils.escapeHtml(state.text) + '</textarea>';
+            }
+            html += '<button class="pen-toggle-btn' + (isDraw ? ' active' : '') + '" id="remarks-pen-toggle" type="button" title="' + (isDraw ? t('switchToText') : t('switchToDraw')) + '">✏</button>';
             html += '</div>';
+            html += '</div>';
+
+            if (otherEntries.length > 0) {
+                html += '<div class="form-group">';
+                html += '<label>' + t('othersRemarks') + '</label>';
+                otherEntries.forEach(function (kv) {
+                    var entry = kv[1];
+                    var hasDraw = entry.mode === 'draw' && entry.drawing;
+                    if (!entry.text && !hasDraw) return;
+                    html += '<div class="other-trainer-note" style="margin-bottom:6px">';
+                    html += '<span class="trainer-label">' + App.Utils.escapeHtml(entry.name) + ':</span>';
+                    if (hasDraw) {
+                        html += '<img src="' + entry.drawing + '" class="drawing-thumbnail" style="max-height:180px" alt="">';
+                    } else {
+                        html += '<span class="trainer-text" style="white-space:pre-wrap">' + App.Utils.escapeHtml(entry.text) + '</span>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            html += '<div class="modal-actions">';
+            html += '<button class="btn btn-primary" id="btn-save-remarks">' + t('save') + '</button>';
+            html += '<button class="btn btn-outline" id="btn-close-remarks">' + t('cancel') + '</button>';
+            html += '</div></div></div>';
+            modalContainer.innerHTML = html;
+
+            // Wire up
+            var ta = document.getElementById('my-general-remarks');
+            if (ta) {
+                ta.addEventListener('input', function () { state.text = ta.value; });
+                ta.focus();
+            }
+            document.getElementById('remarks-pen-toggle').addEventListener('click', async function () {
+                if (state.mode === 'draw') {
+                    // Switch back to text
+                    state.mode = 'text';
+                    renderModal();
+                } else {
+                    // Sync any unsaved text first
+                    if (ta) state.text = ta.value;
+                    var result = await App.Drawing.openCanvas({
+                        initialDataUrl: state.drawing,
+                        title: t('drawMode')
+                    });
+                    if (result.action === 'save') {
+                        state.drawing = result.dataUrl;
+                        state.mode = 'draw';
+                        renderModal();
+                    }
+                }
+            });
+            var thumb = document.getElementById('remarks-drawing-thumb');
+            if (thumb) {
+                thumb.addEventListener('click', async function () {
+                    var result = await App.Drawing.openCanvas({
+                        initialDataUrl: state.drawing,
+                        title: t('drawMode')
+                    });
+                    if (result.action === 'save') {
+                        state.drawing = result.dataUrl;
+                        renderModal();
+                    }
+                });
+            }
+            document.getElementById('btn-save-remarks').addEventListener('click', async function () {
+                // Capture latest text from DOM if still in text mode
+                if (ta) state.text = ta.value;
+                await App.Storage.saveGeneralRemarks(currentExamId, state.text, {
+                    drawing: state.drawing,
+                    mode: state.mode
+                });
+                modalContainer.innerHTML = '';
+                App.showToast(t('dataSaved'));
+            });
+            document.getElementById('btn-close-remarks').addEventListener('click', function () { modalContainer.innerHTML = ''; });
+            document.getElementById('remarks-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
         }
 
-        html += '<div class="modal-actions">';
-        html += '<button class="btn btn-primary" id="btn-save-remarks">' + t('save') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-close-remarks">' + t('cancel') + '</button>';
-        html += '</div></div></div>';
-        modalContainer.innerHTML = html;
-
-        document.getElementById('btn-save-remarks').addEventListener('click', async function () {
-            var text = document.getElementById('my-general-remarks').value;
-            await App.Storage.saveGeneralRemarks(currentExamId, text);
-            modalContainer.innerHTML = '';
-            App.showToast(t('dataSaved'));
-        });
-        document.getElementById('btn-close-remarks').addEventListener('click', function () { modalContainer.innerHTML = ''; });
-        document.getElementById('remarks-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
-        document.getElementById('my-general-remarks').focus();
+        renderModal();
     }
 
     // --- Category presets ---
