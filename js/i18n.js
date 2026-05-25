@@ -225,7 +225,27 @@ App.I18n = (function () {
             clear: 'נקה',
             switchToDraw: 'עבור לציור',
             switchToText: 'עבור לטקסט',
-            tapToDraw: 'הקש כדי לצייר'
+            tapToDraw: 'הקש כדי לצייר',
+            // Quick tags
+            quickTags: 'תגיות מהירות',
+            quickTagsHelp: 'הקלד תגיות מופרדות בפסיק',
+            // Bulk select
+            selectMode: 'מצב בחירה',
+            exitSelectMode: 'צא ממצב בחירה',
+            selected: 'נבחרו',
+            selectCategory: 'בחר קטגוריה',
+            clearSelection: 'נקה בחירה',
+            applyTo: 'החל על',
+            // Past exams
+            pastExams: 'מבחנים קודמים',
+            noPastExams: 'לא נמצאו מבחנים קודמים',
+            searchPastExaminees: 'חפש נבחן קודם',
+            notThisPerson: 'לא האיש הזה?',
+            linkRecord: 'קשר רשומה',
+            linkedRecords: 'רשומות מקושרות',
+            viewExam: 'הצג מבחן',
+            mergeWithExisting: 'מזג עם רשומה קיימת',
+            recordLinked: 'הרשומה קושרה'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -445,7 +465,27 @@ App.I18n = (function () {
             clear: 'Clear',
             switchToDraw: 'Switch to drawing',
             switchToText: 'Switch to text',
-            tapToDraw: 'Tap to draw'
+            tapToDraw: 'Tap to draw',
+            // Quick tags
+            quickTags: 'Quick tags',
+            quickTagsHelp: 'Enter tags separated by commas',
+            // Bulk select
+            selectMode: 'Select mode',
+            exitSelectMode: 'Exit select mode',
+            selected: 'selected',
+            selectCategory: 'Choose category',
+            clearSelection: 'Clear selection',
+            applyTo: 'Apply to',
+            // Past exams
+            pastExams: 'Past exams',
+            noPastExams: 'No past exams found',
+            searchPastExaminees: 'Search past examinees',
+            notThisPerson: 'Not this person?',
+            linkRecord: 'Link record',
+            linkedRecords: 'Linked records',
+            viewExam: 'View exam',
+            mergeWithExisting: 'Merge with existing record',
+            recordLinked: 'Record linked'
         }
     };
 

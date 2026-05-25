@@ -113,6 +113,13 @@ App.ExamineeDetail = (function () {
         html += '</div>'; // end shodan-subsection
         html += '</div>'; // end prerequisites-section
 
+        // Past exams section — lazy-loaded after main form renders
+        html += '<div class="past-exams-section">';
+        html += '<h3 class="section-title">' + t('pastExams') + '</h3>';
+        html += '<div id="past-exams-list" class="past-exams-list">' + t('loading') + '</div>';
+        html += '<button type="button" class="btn btn-sm btn-outline" id="btn-merge-past">' + t('notThisPerson') + '</button>';
+        html += '</div>';
+
         html += '<div class="form-actions">';
         html += '<button class="btn btn-primary" id="btn-save-examinee">' + t('save') + '</button>';
         html += '</div>';
@@ -213,6 +220,136 @@ App.ExamineeDetail = (function () {
                 }
             });
         }
+
+        // Past exams — fire-and-forget, fills in after main render
+        loadPastExams(examId, examineeId);
+
+        var mergeBtn = document.getElementById('btn-merge-past');
+        if (mergeBtn) {
+            mergeBtn.addEventListener('click', function () {
+                openMergeModal(examId, examineeId);
+            });
+        }
+    }
+
+    async function loadPastExams(examId, examineeId) {
+        var t = App.I18n.t;
+        var listEl = document.getElementById('past-exams-list');
+        if (!listEl) return;
+        try {
+            var exam = await App.Storage.getExam(examId);
+            var ex = exam && exam.examinees && exam.examinees[examineeId];
+            if (!ex) { listEl.textContent = t('error'); return; }
+            ex.examId = examId; // for filter
+            var matches = await App.Storage.findExamineeHistory(ex, examId);
+            renderPastExamsList(matches, examId, examineeId);
+        } catch (err) {
+            console.error('loadPastExams failed:', err);
+            listEl.textContent = t('error');
+        }
+    }
+
+    function renderPastExamsList(matches, examId, examineeId) {
+        var t = App.I18n.t;
+        var listEl = document.getElementById('past-exams-list');
+        if (!listEl) return;
+        if (!matches.length) {
+            listEl.innerHTML = '<p class="muted">' + t('noPastExams') + '</p>';
+            return;
+        }
+        var html = '';
+        matches.forEach(function (m) {
+            html += '<div class="past-exam-card">';
+            html += '<div class="past-exam-meta">';
+            html += '<strong>' + App.Utils.escapeHtml(m.exam.name) + '</strong>';
+            if (m.exam.date) html += '<span class="past-exam-date">' + App.Utils.formatDate(m.exam.date) + '</span>';
+            html += '</div>';
+            html += '<div class="past-exam-details">';
+            if (m.examineeData.targetRank) {
+                html += '<span class="past-exam-rank">' + App.Utils.escapeHtml(m.examineeData.targetRank) + '</span>';
+            } else if (m.examineeData.rank) {
+                html += '<span class="past-exam-rank">' + App.Utils.escapeHtml(m.examineeData.rank) + '</span>';
+            }
+            html += '</div>';
+            html += '<div class="past-exam-actions">';
+            html += '<a href="#/exam/' + m.exam.id + '/examinee/' + m.examineeId + '" class="btn btn-sm btn-outline">' + t('viewExam') + '</a>';
+            html += '</div>';
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+    }
+
+    function openMergeModal(examId, examineeId) {
+        var t = App.I18n.t;
+        var container = document.body;
+        var existing = document.getElementById('merge-modal-overlay');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.id = 'merge-modal-overlay';
+        overlay.innerHTML =
+            '<div class="modal modal-wide">' +
+            '<h2>' + t('mergeWithExisting') + '</h2>' +
+            '<div class="form-group">' +
+            '<input type="search" id="merge-search-input" placeholder="' + t('searchPastExaminees') + '">' +
+            '</div>' +
+            '<div id="merge-candidates" class="merge-candidates"><p class="muted">' + t('searchPastExaminees') + '...</p></div>' +
+            '<div class="modal-actions"><button class="btn btn-outline" id="btn-close-merge">' + t('cancel') + '</button></div>' +
+            '</div>';
+        container.appendChild(overlay);
+
+        var input = document.getElementById('merge-search-input');
+        var candEl = document.getElementById('merge-candidates');
+        var currentExaminee = null;
+
+        // Pre-fetch current examinee data once
+        App.Storage.getExam(examId).then(function (exam) {
+            currentExaminee = exam.examinees[examineeId];
+        });
+
+        var debounced = App.Utils.debounce(async function () {
+            var q = input.value.trim();
+            if (!q) {
+                candEl.innerHTML = '<p class="muted">' + t('searchPastExaminees') + '...</p>';
+                return;
+            }
+            candEl.innerHTML = '<p class="muted">' + t('loading') + '</p>';
+            var results = await App.Storage.searchPastExamineesByName(q, currentExaminee || {}, examId);
+            if (!results.length) {
+                candEl.innerHTML = '<p class="muted">' + t('noPastExams') + '</p>';
+                return;
+            }
+            var html = '';
+            results.forEach(function (r) {
+                var lid = r.exam.id + '__' + r.examineeId;
+                html += '<div class="merge-candidate" data-lid="' + lid + '">';
+                html += '<div class="cand-name">' + App.Utils.escapeHtml(r.examineeData.firstName + ' ' + r.examineeData.lastName) + '</div>';
+                html += '<div class="cand-meta">';
+                html += App.Utils.escapeHtml(r.exam.name);
+                if (r.exam.date) html += ' · ' + App.Utils.formatDate(r.exam.date);
+                if (r.examineeData.dateOfBirth) html += ' · ' + App.Utils.escapeHtml(r.examineeData.dateOfBirth);
+                if (r.score >= 100) html += ' <span class="match-high">●</span>';
+                html += '</div>';
+                html += '<button class="btn btn-sm btn-primary cand-link-btn" data-lid="' + lid + '">' + t('linkRecord') + '</button>';
+                html += '</div>';
+            });
+            candEl.innerHTML = html;
+            candEl.querySelectorAll('.cand-link-btn').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    await App.Storage.linkExamineeRecord(examId, examineeId, btn.dataset.lid);
+                    App.showToast(t('recordLinked'));
+                    overlay.remove();
+                    // Reload past exams to include the new link
+                    loadPastExams(examId, examineeId);
+                });
+            });
+        }, 300);
+
+        input.addEventListener('input', debounced);
+        document.getElementById('btn-close-merge').addEventListener('click', function () { overlay.remove(); });
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+        input.focus();
     }
 
     async function saveExaminee(examId, examineeId) {

@@ -858,6 +858,123 @@ App.Storage = (function () {
         await App.db.collection('exams').doc(examId).update(payload);
     }
 
+    // --- User preferences (per-trainer global settings: quick tags, etc.) ---
+
+    async function getUserPreferences() {
+        var uid = App.Auth.getUserId();
+        if (!uid) return {};
+        var snap = await App.db.collection('users').doc(uid).get();
+        return snap.exists ? (snap.data().preferences || {}) : {};
+    }
+
+    async function updateUserPreferences(patch) {
+        var uid = App.Auth.getUserId();
+        if (!uid) return;
+        var ref = App.db.collection('users').doc(uid);
+        // Ensure preferences sub-object exists
+        await ref.set({ preferences: {} }, { merge: true });
+        // Apply dotted-path updates
+        var update = {};
+        Object.keys(patch).forEach(function (k) {
+            update['preferences.' + k] = patch[k];
+        });
+        await ref.update(update);
+    }
+
+    // --- Past exam history search ---
+
+    function _normalizeName(s) {
+        return (s || '').trim().toLowerCase();
+    }
+
+    // Returns an array of {exam, examineeId, examineeData, grades} entries from past exams
+    // that match the same person by (firstName + lastName + dateOfBirth).
+    // Skips currentExamId. Sorted by exam date descending.
+    async function findExamineeHistory(currentExaminee, currentExamId) {
+        var allExams = await getExamIndex();
+        var keyFor = function (data) {
+            return _normalizeName(data.firstName) + '|' +
+                   _normalizeName(data.lastName) + '|' +
+                   (data.dateOfBirth || '');
+        };
+        var targetKey = keyFor(currentExaminee);
+        var linkedIds = Array.isArray(currentExaminee.linkedRecordIds) ? currentExaminee.linkedRecordIds : [];
+
+        var matches = [];
+        for (var i = 0; i < allExams.length; i++) {
+            var ex = allExams[i];
+            if (ex.id === currentExamId) continue;
+            var examineesSnap;
+            try {
+                examineesSnap = await App.db.collection('exams').doc(ex.id)
+                    .collection('examinees').get();
+            } catch (e) {
+                console.warn('findExamineeHistory: failed to read examinees for', ex.id, e);
+                continue;
+            }
+            examineesSnap.docs.forEach(function (d) {
+                var data = d.data();
+                var linkId = ex.id + '__' + d.id;
+                var isMatch = (keyFor(data) === targetKey) || (linkedIds.indexOf(linkId) !== -1);
+                if (isMatch) {
+                    matches.push({
+                        exam: ex,
+                        examineeId: d.id,
+                        examineeData: data
+                    });
+                }
+            });
+        }
+        matches.sort(function (a, b) {
+            return (b.exam.date || '') > (a.exam.date || '') ? 1 : -1;
+        });
+        return matches;
+    }
+
+    // Free-form search across all examinees in all exams (for the manual merge UI).
+    // Returns up to 25 candidates ranked by match quality.
+    async function searchPastExamineesByName(query, currentExamineeData, currentExamId) {
+        var allExams = await getExamIndex();
+        var q = _normalizeName(query);
+        if (!q) return [];
+        var targetDob = currentExamineeData ? (currentExamineeData.dateOfBirth || '') : '';
+        var results = [];
+        for (var i = 0; i < allExams.length; i++) {
+            var ex = allExams[i];
+            if (ex.id === currentExamId) continue;
+            var snap;
+            try {
+                snap = await App.db.collection('exams').doc(ex.id).collection('examinees').get();
+            } catch (e) { continue; }
+            snap.docs.forEach(function (d) {
+                var data = d.data();
+                var fullName = _normalizeName(data.firstName) + ' ' + _normalizeName(data.lastName);
+                if (fullName.indexOf(q) === -1) return;
+                var score = 0;
+                if (data.dateOfBirth && data.dateOfBirth === targetDob) score += 100;
+                if (fullName === q) score += 50;
+                if (fullName.indexOf(q) === 0) score += 10;
+                results.push({
+                    exam: ex,
+                    examineeId: d.id,
+                    examineeData: data,
+                    score: score
+                });
+            });
+        }
+        results.sort(function (a, b) { return b.score - a.score; });
+        return results.slice(0, 25);
+    }
+
+    // Append an examId__examineeId to linkedRecordIds on the current examinee.
+    async function linkExamineeRecord(examId, examineeId, linkedId) {
+        var ref = App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId);
+        await ref.update({
+            linkedRecordIds: firebase.firestore.FieldValue.arrayUnion(linkedId)
+        });
+    }
+
     return {
         getSettings: getSettings,
         saveSettings: saveSettings,
@@ -896,6 +1013,11 @@ App.Storage = (function () {
         updateCategoryOrder: updateCategoryOrder,
         updateCustomCategories: updateCustomCategories,
         addTrainerById: addTrainerById,
-        getKnownTrainers: getKnownTrainers
+        getKnownTrainers: getKnownTrainers,
+        getUserPreferences: getUserPreferences,
+        updateUserPreferences: updateUserPreferences,
+        findExamineeHistory: findExamineeHistory,
+        searchPastExamineesByName: searchPastExamineesByName,
+        linkExamineeRecord: linkExamineeRecord
     };
 })();

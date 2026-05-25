@@ -13,6 +13,8 @@ App.ExamTable = (function () {
     var dragSrcEl = null;
     var dragType = null; // 'category' or 'examinee'
     var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    var selectMode = false;
+    var selectedExamineeIds = new Set();
 
     // --- Draft / private mode helpers ---
 
@@ -110,6 +112,7 @@ App.ExamTable = (function () {
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-add-examinee">+ ' + t('addExaminee') + '</button>';
         html += '<button class="btn btn-outline" id="btn-general-remarks">' + t('generalRemarks') + '</button>';
+        html += '<button class="btn btn-outline' + (selectMode ? ' active' : '') + '" id="btn-select-mode">' + (selectMode ? t('exitSelectMode') : t('selectMode')) + '</button>';
         html += renderDraftToggle();
 
         // Manage Test dropdown — collapses copy/import/export/share/invite
@@ -160,8 +163,12 @@ App.ExamTable = (function () {
             html += '</div>';
             html += '</th>';
             examinees.forEach(function (ex, idx) {
-                html += '<th class="examinee-header" data-id="' + ex.id + '" data-order="' + idx + '"' + (isTouch ? '' : ' draggable="true"') + '>';
+                var rankColor = App.Utils.getRankColorClass(ex.targetRank || ex.rank);
+                html += '<th class="examinee-header ' + rankColor + '" data-id="' + ex.id + '" data-order="' + idx + '"' + (isTouch ? '' : ' draggable="true"') + '>';
                 html += '<div class="examinee-header-content">';
+                if (selectMode) {
+                    html += '<input type="checkbox" class="examinee-select-cb" data-id="' + ex.id + '"' + (selectedExamineeIds.has(ex.id) ? ' checked' : '') + '>';
+                }
                 html += '<button class="btn btn-sm export-rec-btn" data-id="' + ex.id + '" title="' + t('exportRecommendation') + '">&#128196;</button>';
                 html += '<div class="drag-handle" title="' + t('dragToReorder') + '">&#8942;&#8942;</div>';
                 if (ex.photoUrl) {
@@ -172,6 +179,9 @@ App.ExamTable = (function () {
                 html += '</a>';
                 if (ex.rank) {
                     html += '<span class="examinee-rank">' + App.Utils.escapeHtml(ex.rank) + '</span>';
+                }
+                if (ex.targetRank && ex.targetRank !== ex.rank) {
+                    html += '<span class="examinee-target-rank" title="' + t('targetRank') + '">→ ' + App.Utils.escapeHtml(ex.targetRank) + '</span>';
                 }
                 html += '<button class="btn btn-sm btn-danger remove-examinee-btn" data-id="' + ex.id + '" title="' + t('removeExaminee') + '">&#10005;</button>';
                 html += '</div>';
@@ -201,6 +211,23 @@ App.ExamTable = (function () {
             html += '</tbody>';
 
             html += '</table>';
+            html += '</div>';
+        }
+
+        // Bulk action bar — floating, shown only when something is selected
+        if (selectMode && selectedExamineeIds.size > 0) {
+            html += '<div class="bulk-action-bar">';
+            html += '<span class="bulk-count">' + selectedExamineeIds.size + ' ' + t('selected') + '</span>';
+            html += '<select id="bulk-category"><option value="">' + t('selectCategory') + '</option>';
+            categories.forEach(function (c) {
+                if (c.type === 'passfail') return; // marks don't apply to passfail
+                html += '<option value="' + c.key + '">' + App.Utils.escapeHtml(c[lang]) + '</option>';
+            });
+            html += '</select>';
+            html += '<button class="comp-btn comp-v bulk-mark-btn" data-mark="v" title="' + t('competenceV') + '">✓</button>';
+            html += '<button class="comp-btn comp-q bulk-mark-btn" data-mark="q" title="' + t('competenceQ') + '">?</button>';
+            html += '<button class="comp-btn comp-x bulk-mark-btn" data-mark="x" title="' + t('competenceX') + '">✗</button>';
+            html += '<button class="btn btn-sm btn-outline" id="btn-clear-selection">' + t('clearSelection') + '</button>';
             html += '</div>';
         }
 
@@ -266,6 +293,19 @@ App.ExamTable = (function () {
             textareaClass: 'grade-textarea',
             placeholder: t('enterNotes')
         });
+
+        // Quick-tag chips (only in text mode, only if any defined)
+        if (myMode !== 'draw' && App.UserPrefs) {
+            var tags = App.UserPrefs.getQuickTags(catKey);
+            if (tags && tags.length > 0) {
+                html += '<div class="quick-tags" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
+                tags.forEach(function (tag) {
+                    var esc = App.Utils.escapeHtml(tag);
+                    html += '<button class="quick-tag-chip" data-text="' + esc + '" type="button">' + esc + '</button>';
+                });
+                html += '</div>';
+            }
+        }
 
         return html;
     }
@@ -1106,6 +1146,119 @@ App.ExamTable = (function () {
                 });
             }
         });
+
+        // Quick-tag chips — append to the corresponding textarea, save, and trigger autosave
+        document.querySelectorAll('.quick-tag-chip').forEach(function (chip) {
+            chip.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var wrapper = chip.closest('.quick-tags');
+                if (!wrapper) return;
+                var exId = wrapper.dataset.examinee;
+                var catKey = wrapper.dataset.category;
+                var cell = chip.closest('.grade-cell');
+                var textarea = cell && cell.querySelector('.grade-textarea');
+                if (!textarea) return;
+                var sep = textarea.value.trim() ? ', ' : '';
+                textarea.value = textarea.value + sep + chip.dataset.text;
+                // Re-fit textarea height and persist
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.max(60, textarea.scrollHeight) + 'px';
+                saveGrade(exId, catKey, textarea.value);
+                textarea.focus();
+            });
+        });
+
+        // Select-mode toggle
+        var selectModeBtn = document.getElementById('btn-select-mode');
+        if (selectModeBtn) {
+            selectModeBtn.addEventListener('click', function () {
+                selectMode = !selectMode;
+                if (!selectMode) selectedExamineeIds.clear();
+                renderTable();
+            });
+        }
+
+        // Checkboxes on examinee headers
+        document.querySelectorAll('.examinee-select-cb').forEach(function (cb) {
+            cb.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+            cb.addEventListener('change', function () {
+                var id = cb.dataset.id;
+                if (cb.checked) selectedExamineeIds.add(id);
+                else selectedExamineeIds.delete(id);
+                renderTable();
+            });
+        });
+
+        // Bulk mark buttons
+        document.querySelectorAll('.bulk-mark-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var catSel = document.getElementById('bulk-category');
+                var catKey = catSel && catSel.value;
+                if (!catKey) {
+                    catSel.focus();
+                    return;
+                }
+                var mark = btn.dataset.mark;
+                selectedExamineeIds.forEach(function (exId) {
+                    saveGrade(exId, catKey + '_mark', mark);
+                    _patchLocalGrade(exId, catKey + '_mark', mark);
+                });
+                App.showToast(t('dataSaved'));
+                renderTable();
+            });
+        });
+
+        var clearSelBtn = document.getElementById('btn-clear-selection');
+        if (clearSelBtn) {
+            clearSelBtn.addEventListener('click', function () {
+                selectedExamineeIds.clear();
+                renderTable();
+            });
+        }
+
+        // Keyboard shortcuts on grade table
+        bindGradeKeyboard();
+    }
+
+    function bindGradeKeyboard() {
+        var table = document.querySelector('.grading-table');
+        if (!table) return;
+        table.addEventListener('keydown', function (e) {
+            var el = e.target;
+            if (!el.matches || !el.matches('.grade-textarea, .condition-input')) return;
+            // Ctrl/Cmd + 1/2/3 → V / ? / X
+            if ((e.ctrlKey || e.metaKey) && (e.key === '1' || e.key === '2' || e.key === '3')) {
+                e.preventDefault();
+                var mark = e.key === '1' ? 'v' : e.key === '2' ? 'q' : 'x';
+                var cell = el.closest('.grade-cell');
+                var btn = cell && cell.querySelector('.comp-btn[data-mark="' + mark + '"]');
+                if (btn) btn.click();
+                return;
+            }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                moveCellFocus(el, e.shiftKey ? -1 : 1);
+            } else if (e.key === 'Escape') {
+                el.blur();
+            }
+        });
+    }
+
+    function moveCellFocus(currentInput, dir) {
+        var cell = currentInput.closest('.grade-cell');
+        if (!cell) return;
+        var exId = cell.dataset.examinee;
+        var allCellsForEx = Array.from(document.querySelectorAll('.grade-cell[data-examinee="' + exId + '"]'));
+        var idx = allCellsForEx.indexOf(cell);
+        var nextCell = allCellsForEx[idx + dir];
+        if (!nextCell) return;
+        var nextInput = nextCell.querySelector('.grade-textarea, .condition-input');
+        if (nextInput && !nextInput.classList.contains('hidden')) {
+            nextInput.focus();
+            try { nextInput.select(); } catch (e) { /* not all inputs support select */ }
+        }
     }
 
     function showAddExamineeModal() {
@@ -1360,6 +1513,12 @@ App.ExamTable = (function () {
                 html += '<input type="checkbox" class="cat-mgr-marks-cb" data-key="' + cat.key + '"' + (cat.hideMarks ? '' : ' checked') + '>';
                 html += ' ' + t('showMarks');
                 html += '</label>';
+                // Quick-tags input (per-user, applies across all exams)
+                var tagsCsv = (App.UserPrefs ? App.UserPrefs.getQuickTags(cat.key) : []).join(', ');
+                html += '<label class="cat-mgr-tags-label" title="' + t('quickTagsHelp') + '">';
+                html += t('quickTags') + ':';
+                html += '<input type="text" class="cat-mgr-tags-input" data-key="' + cat.key + '" value="' + App.Utils.escapeHtml(tagsCsv) + '" placeholder="' + t('quickTagsHelp') + '">';
+                html += '</label>';
             }
             html += '<div class="cat-mgr-actions">';
             html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️</button>';
@@ -1400,6 +1559,25 @@ App.ExamTable = (function () {
                 }
                 await App.Storage.updateCustomCategories(currentExamId, customCategories);
                 cachedExam.customCategories = customCategories;
+            });
+        });
+
+        // Quick-tags input — persisted on blur or Enter (saves per-user)
+        document.querySelectorAll('.cat-mgr-tags-input').forEach(function (inp) {
+            var save = function () {
+                var key = inp.dataset.key;
+                var tags = inp.value.split(',')
+                    .map(function (s) { return s.trim(); })
+                    .filter(function (s) { return s.length > 0; });
+                if (App.UserPrefs) {
+                    App.UserPrefs.setQuickTags(key, tags).catch(function (e) {
+                        console.error('setQuickTags failed:', e);
+                    });
+                }
+            };
+            inp.addEventListener('blur', save);
+            inp.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
             });
         });
 

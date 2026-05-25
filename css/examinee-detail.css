@@ -104,3 +104,79 @@
     display: flex;
     gap: 10px;
 }
+
+/* Past exams timeline */
+.past-exams-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.past-exams-section .section-title {
+    margin: 0 0 12px;
+}
+.past-exams-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.past-exam-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.past-exam-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 150px;
+}
+.past-exam-date {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.past-exam-rank {
+    font-size: 0.85rem;
+    color: var(--primary-dark);
+    background: var(--bg-card);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+}
+.past-exam-details { display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--text-secondary); font-style: italic; }
+
+/* Merge modal */
+.merge-candidates {
+    max-height: 50vh;
+    overflow-y: auto;
+    margin: 8px 0;
+}
+.merge-candidate {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    margin-bottom: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--bg-card);
+}
+.merge-candidate .cand-name { font-weight: 600; }
+.merge-candidate .cand-meta { font-size: 0.82rem; color: var(--text-secondary); }
+.merge-candidate .match-high { color: #43a047; }
+.merge-candidate .cand-link-btn { align-self: flex-end; }
+#merge-search-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    font-size: 0.95rem;
+}

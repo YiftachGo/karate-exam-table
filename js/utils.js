@@ -234,6 +234,24 @@ App.Utils = (function () {
         return readLocationDateList(listEl, { rowClass: 'belt-row' });
     }
 
+    // Returns a CSS class name representing the belt color of the given rank.
+    // Used to color-code examinee row headers in the exam table.
+    // Order matters: check more-specific keywords first. For gradient ranks like
+    // 'לבנה-צהובה' we want to show the "transitioning to" color (later in the gradient).
+    function getRankColorClass(rank) {
+        if (!rank) return 'rank-color-white';
+        if (rank.indexOf('דאן') !== -1) return 'rank-color-black';
+        if (rank.indexOf('חומה') !== -1) return 'rank-color-brown';
+        if (rank.indexOf('ירוקה') !== -1) return 'rank-color-green';
+        if (rank.indexOf('כתומה') !== -1) return 'rank-color-orange';
+        if (rank.indexOf('צהובה') !== -1) return 'rank-color-yellow';
+        if (rank.indexOf('אפורה') !== -1) return 'rank-color-gray';
+        if (rank.indexOf('כחולה') !== -1) return 'rank-color-blue';
+        if (rank.indexOf('סגולה') !== -1) return 'rank-color-purple';
+        if (rank.indexOf('אדומה') !== -1) return 'rank-color-red';
+        return 'rank-color-white';
+    }
+
     return {
         generateId: generateId,
         calculateAge: calculateAge,
@@ -252,6 +270,7 @@ App.Utils = (function () {
         readLocationDateList: readLocationDateList,
         renderBeltTrainingsList: renderBeltTrainingsList,
         readBeltTrainingsList: readBeltTrainingsList,
-        isBlackBeltRank: isBlackBeltRank
+        isBlackBeltRank: isBlackBeltRank,
+        getRankColorClass: getRankColorClass
     };
 })();

@@ -8,6 +8,12 @@ App.init = async function () {
     App.Auth.init();
     await App.Auth.waitForAuth();
 
+    // Load this user's preferences (quick-tags etc.) — non-blocking, but await so
+    // first render has them available.
+    if (App.Auth.isLoggedIn()) {
+        await App.UserPrefs.load();
+    }
+
     App.updateHeader();
 
     document.getElementById('lang-toggle').addEventListener('click', function () {
