@@ -350,13 +350,16 @@ App.Storage = (function () {
 
     async function addTrainerByEmail(examId, email) {
         try {
+            // Normalize so we match regardless of how the user typed their email
+            // and regardless of casing stored on the /users doc.
+            var normalizedEmail = (email || '').trim().toLowerCase();
             var usersSnap = await App.db.collection('users')
-                .where('email', '==', email).limit(1).get();
+                .where('email', '==', normalizedEmail).limit(1).get();
             if (usersSnap.empty) return { error: 'not_found' };
 
             var trainerDoc = usersSnap.docs[0];
             var trainerId = trainerDoc.id;
-            var trainerName = trainerDoc.data().displayName || email;
+            var trainerName = trainerDoc.data().displayName || normalizedEmail;
 
             var updateData = {
                 trainerIds: firebase.firestore.FieldValue.arrayUnion(trainerId),

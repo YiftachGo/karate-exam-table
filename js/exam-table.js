@@ -1365,7 +1365,7 @@ App.ExamTable = (function () {
         });
 
         document.getElementById('btn-add-trainer').addEventListener('click', async function () {
-            var email = document.getElementById('trainer-email').value.trim();
+            var email = document.getElementById('trainer-email').value.trim().toLowerCase();
             if (!email) return;
             var errorEl = document.getElementById('share-error');
             errorEl.style.display = 'none';

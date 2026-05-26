@@ -11,10 +11,11 @@ App.Auth = (function () {
         App.auth.onAuthStateChanged(function (user) {
             currentUser = user;
             if (user) {
-                // Ensure user doc exists in Firestore
+                // Ensure user doc exists in Firestore. Normalize email so trainer
+                // lookups (share-by-email) match regardless of casing/whitespace.
                 App.db.collection('users').doc(user.uid).set({
-                    displayName: user.displayName || user.email.split('@')[0],
-                    email: user.email,
+                    displayName: user.displayName || (user.email || '').split('@')[0],
+                    email: (user.email || '').trim().toLowerCase(),
                     lastLogin: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true }).catch(function (err) {
                     console.warn('Failed to update user doc:', err);
