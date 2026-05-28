@@ -245,7 +245,12 @@ App.I18n = (function () {
             linkedRecords: 'רשומות מקושרות',
             viewExam: 'הצג מבחן',
             mergeWithExisting: 'מזג עם רשומה קיימת',
-            recordLinked: 'הרשומה קושרה'
+            recordLinked: 'הרשומה קושרה',
+            // Publishing / autocomplete
+            publishing: 'מפרסם',
+            loadingSuggestions: 'טוען השלמות...',
+            tabToAccept: 'Tab להשלמה',
+            ofTotal: 'מתוך'
         },
         en: {
             appTitle: 'Exam Grading Table',
@@ -485,7 +490,12 @@ App.I18n = (function () {
             linkedRecords: 'Linked records',
             viewExam: 'View exam',
             mergeWithExisting: 'Merge with existing record',
-            recordLinked: 'Record linked'
+            recordLinked: 'Record linked',
+            // Publishing / autocomplete
+            publishing: 'Publishing',
+            loadingSuggestions: 'Loading suggestions...',
+            tabToAccept: 'Tab to accept',
+            ofTotal: 'of'
         }
     };
 

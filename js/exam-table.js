@@ -24,11 +24,17 @@ App.ExamTable = (function () {
         var userId = App.Auth.getUserId();
         var priv = App.Draft.isPrivate(currentExamId);
         var pending = App.Draft.pendingCount(currentExamId, userId);
-        var label = priv
-            ? ('🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : ''))
-            : ('🔓 ' + t('publishedMode'));
-        var cls = priv ? 'btn btn-warning' : 'btn btn-outline';
-        return '<button class="' + cls + '" id="btn-draft-toggle">' + label + '</button>';
+        // Two-segment toggle. Clicking the inactive segment switches mode.
+        // When in draft mode with pending entries, the draft segment shows a count.
+        var draftLabel = '🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : '');
+        var pubLabel = '🔓 ' + t('publishedMode');
+        var html = '<div class="draft-toggle" id="draft-toggle" role="tablist">';
+        html += '<button class="draft-toggle-seg' + (priv ? ' active' : '') + '" data-mode="private" type="button">' + draftLabel + '</button>';
+        html += '<button class="draft-toggle-seg' + (!priv ? ' active' : '') + '" data-mode="published" type="button">' + pubLabel + '</button>';
+        html += '</div>';
+        // Inline progress placeholder used during publish
+        html += '<span class="publish-progress" id="publish-progress" style="display:none"></span>';
+        return html;
     }
 
     // Routes a grade save to localStorage (draft) or Firestore depending on current mode.
@@ -43,12 +49,13 @@ App.ExamTable = (function () {
     }
 
     function updateDraftBadge() {
-        var btn = document.getElementById('btn-draft-toggle');
-        if (!btn) return;
+        // Update the private (draft) segment label with current pending count
+        var seg = document.querySelector('.draft-toggle-seg[data-mode="private"]');
+        if (!seg) return;
         var t = App.I18n.t;
         var userId = App.Auth.getUserId();
         var pending = App.Draft.pendingCount(currentExamId, userId);
-        btn.textContent = '🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : '');
+        seg.textContent = '🔒 ' + t('privateMode') + (pending ? ' (' + pending + ')' : '');
     }
 
     async function render(examId) {
@@ -119,6 +126,7 @@ App.ExamTable = (function () {
         html += '<div class="menu-wrapper" id="manage-test-wrapper">';
         html += '<button class="btn btn-outline" id="btn-manage-test">' + t('manageTest') + ' &#9662;</button>';
         html += '<div class="menu-dropdown" id="manage-test-menu">';
+        html += '<button class="menu-item" data-action="manage-categories">' + t('manageCategories') + '</button>';
         html += '<button class="menu-item" data-action="copy">' + t('copyExaminees') + '</button>';
         html += '<button class="menu-item" data-action="import">' + t('importStudents') + '</button>';
         html += '<button class="menu-item" data-action="export">' + t('export') + '</button>';
@@ -154,12 +162,9 @@ App.ExamTable = (function () {
             html += '<th class="sticky-col category-header">';
             html += '<div class="cat-header-content">';
             html += '<span>' + t('category') + '</span>';
-            html += '<div class="menu-wrapper" id="cat-header-menu-wrapper">';
-            html += '<button class="cat-header-menu-btn" id="btn-cat-header-menu" title="' + t('options') + '">&#8942;</button>';
-            html += '<div class="menu-dropdown menu-dropdown-cat" id="cat-header-menu">';
-            html += '<button class="menu-item" data-action="sort">' + t('sort') + '</button>';
-            html += '<button class="menu-item" data-action="manage">' + t('manageCategories') + '</button>';
-            html += '</div></div>';
+            // Labeled sort button — replaces the ambiguous ⋮ dropdown.
+            // "Manage categories" moved to the Manage Test toolbar dropdown.
+            html += '<button class="btn btn-sm btn-outline cat-sort-btn" id="btn-cat-sort" title="' + t('sort') + '">↕ ' + t('sort') + '</button>';
             html += '</div>';
             html += '</th>';
             examinees.forEach(function (ex, idx) {
@@ -214,21 +219,10 @@ App.ExamTable = (function () {
             html += '</div>';
         }
 
-        // Bulk action bar — floating, shown only when something is selected
-        if (selectMode && selectedExamineeIds.size > 0) {
-            html += '<div class="bulk-action-bar">';
-            html += '<span class="bulk-count">' + selectedExamineeIds.size + ' ' + t('selected') + '</span>';
-            html += '<select id="bulk-category"><option value="">' + t('selectCategory') + '</option>';
-            categories.forEach(function (c) {
-                if (c.type === 'passfail') return; // marks don't apply to passfail
-                html += '<option value="' + c.key + '">' + App.Utils.escapeHtml(c[lang]) + '</option>';
-            });
-            html += '</select>';
-            html += '<button class="comp-btn comp-v bulk-mark-btn" data-mark="v" title="' + t('competenceV') + '">✓</button>';
-            html += '<button class="comp-btn comp-q bulk-mark-btn" data-mark="q" title="' + t('competenceQ') + '">?</button>';
-            html += '<button class="comp-btn comp-x bulk-mark-btn" data-mark="x" title="' + t('competenceX') + '">✗</button>';
-            html += '<button class="btn btn-sm btn-outline" id="btn-clear-selection">' + t('clearSelection') + '</button>';
-            html += '</div>';
+        // Bulk action bar mount point — actual contents written by renderBulkBar()
+        // after the table is in the DOM, so toggling selections doesn't re-render.
+        if (selectMode) {
+            html += '<div class="bulk-action-bar-host" id="bulk-action-bar-host"></div>';
         }
 
         html += '</div>';
@@ -238,6 +232,103 @@ App.ExamTable = (function () {
         bindEvents();
         bindDragDrop();
         autoResizeTextareas();
+        renderBulkBar();
+        // Lazy-attach autocomplete to grade textareas once the index is built
+        attachAutocompleteWhenReady();
+    }
+
+    // Build and update the floating bulk-action bar in place — without re-rendering
+    // the whole table, so the user's scroll position is preserved on every checkbox
+    // toggle.
+    function renderBulkBar() {
+        var host = document.getElementById('bulk-action-bar-host');
+        if (!host) return;
+        var t = App.I18n.t;
+        var lang = App.I18n.getLang();
+        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var examinees = getSortedExaminees();
+
+        if (!selectMode) { host.innerHTML = ''; return; }
+
+        // Top-of-bar "Select all" line is always shown when select mode is on,
+        // even with zero selected. Action buttons appear only once 1+ selected.
+        var allCount = examinees.length;
+        var selCount = selectedExamineeIds.size;
+        var allChecked = (selCount > 0 && selCount === allCount);
+
+        var html = '<div class="bulk-action-bar">';
+        html += '<label class="bulk-selectall-label">';
+        html += '<input type="checkbox" id="bulk-select-all"' + (allChecked ? ' checked' : '') + (selCount > 0 && !allChecked ? ' data-indeterminate="1"' : '') + '> ';
+        html += t('selectAll');
+        html += '</label>';
+        html += '<span class="bulk-count">' + selCount + ' ' + t('selected') + '</span>';
+        if (selCount > 0) {
+            html += '<select id="bulk-category"><option value="">' + t('selectCategory') + '</option>';
+            categories.forEach(function (c) {
+                if (c.type === 'passfail') return;
+                html += '<option value="' + c.key + '">' + App.Utils.escapeHtml(c[lang]) + '</option>';
+            });
+            html += '</select>';
+            html += '<button class="comp-btn comp-v bulk-mark-btn" data-mark="v" title="' + t('competenceV') + '">✓</button>';
+            html += '<button class="comp-btn comp-q bulk-mark-btn" data-mark="q" title="' + t('competenceQ') + '">?</button>';
+            html += '<button class="comp-btn comp-x bulk-mark-btn" data-mark="x" title="' + t('competenceX') + '">✗</button>';
+            html += '<button class="btn btn-sm btn-outline" id="btn-clear-selection">' + t('clearSelection') + '</button>';
+        }
+        html += '</div>';
+        host.innerHTML = html;
+
+        // Set indeterminate state (can't be set via attribute)
+        var sa = document.getElementById('bulk-select-all');
+        if (sa && sa.dataset.indeterminate) sa.indeterminate = true;
+
+        // Wire bar handlers
+        if (sa) {
+            sa.addEventListener('change', function () {
+                if (sa.checked) {
+                    examinees.forEach(function (ex) { selectedExamineeIds.add(ex.id); });
+                } else {
+                    selectedExamineeIds.clear();
+                }
+                // Update each examinee header checkbox in place (no full re-render)
+                document.querySelectorAll('.examinee-select-cb').forEach(function (cb) {
+                    cb.checked = selectedExamineeIds.has(cb.dataset.id);
+                });
+                renderBulkBar();
+            });
+        }
+
+        document.querySelectorAll('.bulk-mark-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var catSel = document.getElementById('bulk-category');
+                var catKey = catSel && catSel.value;
+                if (!catKey) { if (catSel) catSel.focus(); return; }
+                var mark = btn.dataset.mark;
+                var t = App.I18n.t;
+                selectedExamineeIds.forEach(function (exId) {
+                    saveGrade(exId, catKey + '_mark', mark);
+                    _patchLocalGrade(exId, catKey + '_mark', mark);
+                });
+                App.showToast(t('dataSaved'));
+                // Update visible mark buttons for affected cells without full re-render
+                selectedExamineeIds.forEach(function (exId) {
+                    var cellSel = '.grade-cell[data-examinee="' + exId + '"][data-category="' + catKey + '"] .competence-marks';
+                    var group = document.querySelector(cellSel);
+                    if (!group) return;
+                    group.querySelectorAll('.comp-btn').forEach(function (b) {
+                        b.classList.toggle('active', b.dataset.mark === mark);
+                    });
+                });
+            });
+        });
+
+        var clearSelBtn = document.getElementById('btn-clear-selection');
+        if (clearSelBtn) {
+            clearSelBtn.addEventListener('click', function () {
+                selectedExamineeIds.clear();
+                document.querySelectorAll('.examinee-select-cb').forEach(function (cb) { cb.checked = false; });
+                renderBulkBar();
+            });
+        }
     }
 
     function renderGradeCell(examineeId, catKey, currentUserId, otherTrainers, trainerNames, cat) {
@@ -293,19 +384,6 @@ App.ExamTable = (function () {
             textareaClass: 'grade-textarea',
             placeholder: t('enterNotes')
         });
-
-        // Quick-tag chips (only in text mode, only if any defined)
-        if (myMode !== 'draw' && App.UserPrefs) {
-            var tags = App.UserPrefs.getQuickTags(catKey);
-            if (tags && tags.length > 0) {
-                html += '<div class="quick-tags" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
-                tags.forEach(function (tag) {
-                    var esc = App.Utils.escapeHtml(tag);
-                    html += '<button class="quick-tag-chip" data-text="' + esc + '" type="button">' + esc + '</button>';
-                });
-                html += '</div>';
-            }
-        }
 
         return html;
     }
@@ -955,6 +1033,96 @@ App.ExamTable = (function () {
         cachedGrades[examineeId][userId][field] = value;
     }
 
+    // --- Ghost-text autocomplete on grade textareas ---
+
+    var _autocompleteAttached = new WeakSet(); // textareas already wired
+    var _autocompleteBuildStarted = false;
+
+    function attachAutocompleteWhenReady() {
+        if (!App.Autocomplete) return;
+        if (!_autocompleteBuildStarted) {
+            _autocompleteBuildStarted = true;
+            // Kick off the index build in the background (lazy on first table render).
+            App.Autocomplete.buildIndex().then(function () {
+                _attachToAllTextareas();
+            });
+        } else if (App.Autocomplete.isBuilt()) {
+            _attachToAllTextareas();
+        }
+    }
+
+    function _attachToAllTextareas() {
+        document.querySelectorAll('.grade-textarea, .condition-input').forEach(function (ta) {
+            if (_autocompleteAttached.has(ta)) return;
+            if (!ta.dataset.examinee || !ta.dataset.category) return;
+            _attachGhost(ta, ta.dataset.category);
+            _autocompleteAttached.add(ta);
+        });
+    }
+
+    function _attachGhost(textarea, catKey) {
+        // Wrap the textarea in .textarea-with-ghost; overlay a mirror div behind it.
+        if (textarea.parentNode.classList && textarea.parentNode.classList.contains('textarea-with-ghost')) {
+            return; // already wrapped
+        }
+        var wrap = document.createElement('div');
+        wrap.className = 'textarea-with-ghost';
+        textarea.parentNode.insertBefore(wrap, textarea);
+        wrap.appendChild(textarea);
+
+        var ghost = document.createElement('div');
+        ghost.className = 'textarea-ghost';
+        wrap.appendChild(ghost);
+
+        function syncStyle() {
+            var cs = window.getComputedStyle(textarea);
+            ghost.style.font = cs.font;
+            ghost.style.lineHeight = cs.lineHeight;
+            ghost.style.padding = cs.padding;
+            ghost.style.borderWidth = cs.borderWidth;
+            ghost.style.borderStyle = 'solid';
+            ghost.style.borderColor = 'transparent';
+            ghost.style.boxSizing = cs.boxSizing;
+            ghost.style.direction = cs.direction;
+            ghost.style.textAlign = cs.textAlign;
+            ghost.style.width = textarea.offsetWidth + 'px';
+            ghost.style.height = textarea.offsetHeight + 'px';
+        }
+
+        function update() {
+            syncStyle();
+            var val = textarea.value;
+            if (!App.Autocomplete || !App.Autocomplete.isBuilt()) {
+                ghost.innerHTML = '';
+                delete textarea.dataset.ghost;
+                return;
+            }
+            var s = App.Autocomplete.suggest(catKey, val);
+            if (!s) {
+                ghost.innerHTML = '';
+                delete textarea.dataset.ghost;
+                return;
+            }
+            // Render: full value as transparent text, then the completion in a muted span.
+            ghost.innerHTML = App.Utils.escapeHtml(val) +
+                '<span class="ghost-completion">' + App.Utils.escapeHtml(s.completion) + '</span>';
+            textarea.dataset.ghost = s.completion;
+        }
+
+        textarea.addEventListener('input', update);
+        textarea.addEventListener('scroll', function () { ghost.scrollTop = textarea.scrollTop; });
+        textarea.addEventListener('keydown', function (e) {
+            if (e.key === 'Tab' && textarea.dataset.ghost) {
+                e.preventDefault();
+                textarea.value = textarea.value + textarea.dataset.ghost;
+                textarea.dispatchEvent(new Event('input'));
+            }
+        });
+        textarea.addEventListener('blur', function () { ghost.innerHTML = ''; });
+        // Trigger initial render so existing content gets suggestions if applicable.
+        update();
+    }
+
     function bindEvents() {
         var t = App.I18n.t;
 
@@ -970,34 +1138,61 @@ App.ExamTable = (function () {
 
         // Manage Test dropdown
         bindMenuDropdown('btn-manage-test', 'manage-test-menu', function (action) {
-            if (action === 'copy') showCopyExamineesModal();
+            if (action === 'manage-categories') showManageCategoriesModal();
+            else if (action === 'copy') showCopyExamineesModal();
             else if (action === 'import') document.getElementById('import-students-file').click();
             else if (action === 'export') showExportModal();
             else if (action === 'share') showShareModal();
             else if (action === 'invite') showInviteModal();
         });
 
-        // Category header three-dots menu
-        bindMenuDropdown('btn-cat-header-menu', 'cat-header-menu', function (action) {
-            if (action === 'sort') showSortModal();
-            else if (action === 'manage') showManageCategoriesModal();
-        }, { fixed: true });
+        // Labeled sort button in the category column header
+        var sortBtn = document.getElementById('btn-cat-sort');
+        if (sortBtn) sortBtn.addEventListener('click', showSortModal);
 
-        document.getElementById('btn-draft-toggle').addEventListener('click', async function () {
-            var userId = App.Auth.getUserId();
-            if (App.Draft.isPrivate(currentExamId)) {
-                // Publish draft
-                var pending = App.Draft.pendingCount(currentExamId, userId);
-                if (pending > 0) {
-                    if (!confirm(t('publishDraft') + ' (' + pending + ')?')) return;
-                    await App.Draft.publish(currentExamId, userId);
-                    App.showToast(t('draftPublished'));
+        // Draft/Published two-segment toggle
+        document.querySelectorAll('.draft-toggle-seg').forEach(function (seg) {
+            seg.addEventListener('click', async function () {
+                var targetMode = seg.dataset.mode; // 'private' | 'published'
+                var currentlyPrivate = App.Draft.isPrivate(currentExamId);
+                var userId = App.Auth.getUserId();
+
+                if (targetMode === 'private' && !currentlyPrivate) {
+                    App.Draft.setMode(currentExamId, 'private');
+                    renderTable();
+                    return;
                 }
-                App.Draft.setMode(currentExamId, 'published');
-            } else {
-                App.Draft.setMode(currentExamId, 'private');
-            }
-            renderTable();
+                if (targetMode === 'published' && currentlyPrivate) {
+                    // Publish pending drafts with progress UI
+                    var pending = App.Draft.pendingCount(currentExamId, userId);
+                    if (pending > 0) {
+                        if (!confirm(t('publishDraft') + ' (' + pending + ')?')) return;
+                        var progress = document.getElementById('publish-progress');
+                        // Disable both segments during publish
+                        document.querySelectorAll('.draft-toggle-seg').forEach(function (s) { s.disabled = true; });
+                        if (progress) {
+                            progress.style.display = '';
+                            progress.textContent = t('publishing') + ' 0 ' + t('ofTotal') + ' ' + pending + '...';
+                        }
+                        try {
+                            await App.Draft.publish(currentExamId, userId, function (info) {
+                                if (progress) {
+                                    progress.textContent = t('publishing') + ' ' + info.done + ' ' + t('ofTotal') + ' ' + info.total + '...';
+                                }
+                            });
+                            App.showToast(t('draftPublished'));
+                        } catch (err) {
+                            alert(t('error') + ': ' + (err.message || err));
+                        } finally {
+                            if (progress) { progress.style.display = 'none'; progress.textContent = ''; }
+                            document.querySelectorAll('.draft-toggle-seg').forEach(function (s) { s.disabled = false; });
+                        }
+                    }
+                    App.Draft.setMode(currentExamId, 'published');
+                    renderTable();
+                }
+                // If clicking the active segment, no-op
+            });
         });
 
         document.getElementById('import-students-file').addEventListener('change', async function (e) {
@@ -1049,6 +1244,11 @@ App.ExamTable = (function () {
                 ta.style.height = 'auto';
                 ta.style.height = Math.max(60, ta.scrollHeight) + 'px';
                 autoSave(ta.dataset.examinee, ta.dataset.category, ta.value);
+                // Feed back into autocomplete index so newly-typed phrases become
+                // candidates immediately (no waiting for save+rebuild).
+                if (App.Autocomplete && ta.value) {
+                    App.Autocomplete.noteWritten(ta.dataset.category, ta.value);
+                }
             });
         });
 
@@ -1147,27 +1347,6 @@ App.ExamTable = (function () {
             }
         });
 
-        // Quick-tag chips — append to the corresponding textarea, save, and trigger autosave
-        document.querySelectorAll('.quick-tag-chip').forEach(function (chip) {
-            chip.addEventListener('click', function (e) {
-                e.stopPropagation();
-                var wrapper = chip.closest('.quick-tags');
-                if (!wrapper) return;
-                var exId = wrapper.dataset.examinee;
-                var catKey = wrapper.dataset.category;
-                var cell = chip.closest('.grade-cell');
-                var textarea = cell && cell.querySelector('.grade-textarea');
-                if (!textarea) return;
-                var sep = textarea.value.trim() ? ', ' : '';
-                textarea.value = textarea.value + sep + chip.dataset.text;
-                // Re-fit textarea height and persist
-                textarea.style.height = 'auto';
-                textarea.style.height = Math.max(60, textarea.scrollHeight) + 'px';
-                saveGrade(exId, catKey, textarea.value);
-                textarea.focus();
-            });
-        });
-
         // Select-mode toggle
         var selectModeBtn = document.getElementById('btn-select-mode');
         if (selectModeBtn) {
@@ -1178,45 +1357,19 @@ App.ExamTable = (function () {
             });
         }
 
-        // Checkboxes on examinee headers
+        // Checkboxes on examinee headers — preserve scroll by updating only the bulk
+        // bar (no full table re-render).
         document.querySelectorAll('.examinee-select-cb').forEach(function (cb) {
-            cb.addEventListener('click', function (e) {
-                e.stopPropagation();
-            });
+            cb.addEventListener('click', function (e) { e.stopPropagation(); });
             cb.addEventListener('change', function () {
                 var id = cb.dataset.id;
                 if (cb.checked) selectedExamineeIds.add(id);
                 else selectedExamineeIds.delete(id);
-                renderTable();
+                renderBulkBar();
             });
         });
 
-        // Bulk mark buttons
-        document.querySelectorAll('.bulk-mark-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var catSel = document.getElementById('bulk-category');
-                var catKey = catSel && catSel.value;
-                if (!catKey) {
-                    catSel.focus();
-                    return;
-                }
-                var mark = btn.dataset.mark;
-                selectedExamineeIds.forEach(function (exId) {
-                    saveGrade(exId, catKey + '_mark', mark);
-                    _patchLocalGrade(exId, catKey + '_mark', mark);
-                });
-                App.showToast(t('dataSaved'));
-                renderTable();
-            });
-        });
-
-        var clearSelBtn = document.getElementById('btn-clear-selection');
-        if (clearSelBtn) {
-            clearSelBtn.addEventListener('click', function () {
-                selectedExamineeIds.clear();
-                renderTable();
-            });
-        }
+        // Bulk-bar action buttons are wired inside renderBulkBar() now
 
         // Keyboard shortcuts on grade table
         bindGradeKeyboard();
@@ -1492,67 +1645,80 @@ App.ExamTable = (function () {
 
     // --- Manage Categories Modal ---
 
-    function showManageCategoriesModal() {
+    function showManageCategoriesModal(opts) {
+        opts = opts || {};
         var t = App.I18n.t;
         var lang = App.I18n.getLang();
         var modalContainer = document.getElementById('modal-container');
         var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var expandedKey = opts.expandedKey || null;
 
         var html = '<div class="modal-overlay" id="cat-mgr-overlay"><div class="modal modal-wide">';
         html += '<h2>' + t('manageCategories') + '</h2>';
-        html += '<div class="cat-mgr-list">';
-        html += '<div class="cat-mgr-row cat-mgr-header">';
-        html += '<label class="cat-mgr-selectall"><input type="checkbox" id="cat-mgr-select-all"> ' + t('selectAll') + '</label>';
-        html += '</div>';
+        html += '<div class="cat-mgr-list" id="cat-mgr-list">';
         categories.forEach(function (cat) {
-            html += '<div class="cat-mgr-row" data-key="' + cat.key + '">';
-            html += '<label class="cat-mgr-checkbox"><input type="checkbox" class="cat-mgr-cb" value="' + cat.key + '"></label>';
-            html += '<span class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he) + '</span>';
-            if (cat.type !== 'passfail') {
-                html += '<label class="cat-mgr-marks-label" title="' + t('showMarks') + '">';
-                html += '<input type="checkbox" class="cat-mgr-marks-cb" data-key="' + cat.key + '"' + (cat.hideMarks ? '' : ' checked') + '>';
-                html += ' ' + t('showMarks');
-                html += '</label>';
-                // Quick-tags input (per-user, applies across all exams)
-                var tagsCsv = (App.UserPrefs ? App.UserPrefs.getQuickTags(cat.key) : []).join(', ');
-                html += '<label class="cat-mgr-tags-label" title="' + t('quickTagsHelp') + '">';
-                html += t('quickTags') + ':';
-                html += '<input type="text" class="cat-mgr-tags-input" data-key="' + cat.key + '" value="' + App.Utils.escapeHtml(tagsCsv) + '" placeholder="' + t('quickTagsHelp') + '">';
-                html += '</label>';
+            var isExpanded = expandedKey === cat.key;
+            html += '<div class="cat-mgr-row' + (isExpanded ? ' expanded' : '') + '" data-key="' + cat.key + '" draggable="true">';
+            // Summary row (always visible): drag handle + chevron + name
+            html += '<div class="cat-mgr-summary">';
+            html += '<span class="cat-mgr-drag-handle" title="' + t('dragToReorder') + '">⋮⋮</span>';
+            html += '<span class="cat-mgr-chevron">' + (isExpanded ? '▼' : '▶') + '</span>';
+            html += '<div class="cat-mgr-name-block">';
+            html += '<div class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he || cat.key) + '</div>';
+            var altLang = lang === 'he' ? 'en' : 'he';
+            if (cat[altLang] && cat[altLang] !== cat[lang]) {
+                html += '<div class="cat-mgr-name-alt">' + App.Utils.escapeHtml(cat[altLang]) + '</div>';
             }
-            html += '<div class="cat-mgr-actions">';
-            html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️</button>';
-            html += '<button class="btn btn-sm btn-danger cat-delete-btn" data-key="' + cat.key + '">🗑️</button>';
             html += '</div>';
+            html += '</div>';
+            // Expanded content
+            if (isExpanded) {
+                html += '<div class="cat-mgr-expanded">';
+                if (cat.type !== 'passfail') {
+                    html += '<label class="cat-mgr-marks-label">';
+                    html += '<input type="checkbox" class="cat-mgr-marks-cb" data-key="' + cat.key + '"' + (cat.hideMarks ? '' : ' checked') + '> ';
+                    html += t('showMarks');
+                    html += '</label>';
+                }
+                html += '<div class="cat-mgr-expanded-actions">';
+                html += '<button class="btn btn-sm btn-outline cat-edit-btn" data-key="' + cat.key + '">✏️ ' + t('editCategory') + '</button>';
+                html += '<button class="btn btn-sm btn-danger cat-delete-btn" data-key="' + cat.key + '">🗑️ ' + t('delete') + '</button>';
+                html += '</div>';
+                html += '</div>';
+            }
             html += '</div>';
         });
         html += '</div>';
         html += '<div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">';
         html += '<button class="btn btn-outline" id="btn-add-category">+ ' + t('addCategory') + '</button>';
         html += '<button class="btn btn-outline" id="btn-open-presets">' + t('categoryPresets') + '</button>';
-        html += '<button class="btn btn-danger" id="btn-delete-selected-categories">' + t('deleteSelected') + '</button>';
         html += '<button class="btn btn-outline" id="btn-close-cat-mgr">' + t('cancel') + '</button>';
         html += '</div></div></div>';
         modalContainer.innerHTML = html;
 
-        // Select-all toggle
-        document.getElementById('cat-mgr-select-all').addEventListener('change', function () {
-            var checked = this.checked;
-            document.querySelectorAll('.cat-mgr-cb').forEach(function (cb) { cb.checked = checked; });
+        // Per-row click → expand/collapse (one at a time, accordion-style)
+        document.querySelectorAll('.cat-mgr-summary').forEach(function (summary) {
+            summary.addEventListener('click', function (e) {
+                // Ignore clicks on the drag handle so dragging doesn't toggle
+                if (e.target.classList.contains('cat-mgr-drag-handle')) return;
+                var row = summary.closest('.cat-mgr-row');
+                var key = row && row.dataset.key;
+                if (!key) return;
+                var nextKey = (expandedKey === key) ? null : key;
+                showManageCategoriesModal({ expandedKey: nextKey });
+            });
         });
 
-        // Per-category V/?/X marks toggle
+        // V/?/X marks toggle (within expanded section)
         document.querySelectorAll('.cat-mgr-marks-cb').forEach(function (cb) {
+            cb.addEventListener('click', function (e) { e.stopPropagation(); });
             cb.addEventListener('change', async function () {
                 var key = cb.dataset.key;
                 var existing = customCategories[key] || {};
                 if (cb.checked) {
                     delete existing.hideMarks;
-                    if (Object.keys(existing).length === 0) {
-                        delete customCategories[key];
-                    } else {
-                        customCategories[key] = existing;
-                    }
+                    if (Object.keys(existing).length === 0) delete customCategories[key];
+                    else customCategories[key] = existing;
                 } else {
                     existing.hideMarks = true;
                     customCategories[key] = existing;
@@ -1562,51 +1728,61 @@ App.ExamTable = (function () {
             });
         });
 
-        // Quick-tags input — persisted on blur or Enter (saves per-user)
-        document.querySelectorAll('.cat-mgr-tags-input').forEach(function (inp) {
-            var save = function () {
-                var key = inp.dataset.key;
-                var tags = inp.value.split(',')
-                    .map(function (s) { return s.trim(); })
-                    .filter(function (s) { return s.length > 0; });
-                if (App.UserPrefs) {
-                    App.UserPrefs.setQuickTags(key, tags).catch(function (e) {
-                        console.error('setQuickTags failed:', e);
-                    });
-                }
-            };
-            inp.addEventListener('blur', save);
-            inp.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-            });
-        });
-
-        // Edit buttons — after editing, showCategoryEditForm's save handler returns to this modal
+        // Edit / Delete buttons inside expanded section — stop propagation so click
+        // doesn't collapse the row.
         document.querySelectorAll('.cat-edit-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
                 showCategoryEditForm(btn.dataset.key);
             });
         });
-
-        // Single delete — stay in modal after delete
         document.querySelectorAll('.cat-delete-btn').forEach(function (btn) {
-            btn.addEventListener('click', async function () {
+            btn.addEventListener('click', async function (e) {
+                e.stopPropagation();
                 if (!confirm(t('confirmDeleteCategory'))) return;
                 await deleteCategories([btn.dataset.key], 'categoryDeleted');
-                showManageCategoriesModal(); // re-render modal
+                showManageCategoriesModal();
             });
         });
 
-        // Bulk delete
-        document.getElementById('btn-delete-selected-categories').addEventListener('click', async function () {
-            var selected = Array.from(document.querySelectorAll('.cat-mgr-cb:checked')).map(function (cb) { return cb.value; });
-            if (!selected.length) {
-                alert(t('noCategoriesSelected'));
-                return;
-            }
-            if (!confirm(t('confirmDeleteSelectedCategories'))) return;
-            await deleteCategories(selected, 'categoriesDeleted');
-            showManageCategoriesModal(); // re-render modal
+        // HTML5 drag-and-drop reordering of category rows
+        var listEl = document.getElementById('cat-mgr-list');
+        var dragKey = null;
+        document.querySelectorAll('.cat-mgr-row').forEach(function (row) {
+            row.addEventListener('dragstart', function (e) {
+                dragKey = row.dataset.key;
+                row.classList.add('cat-mgr-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragKey); } catch (err) { /* IE */ }
+            });
+            row.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (row.dataset.key !== dragKey) row.classList.add('cat-mgr-drag-over');
+            });
+            row.addEventListener('dragleave', function () { row.classList.remove('cat-mgr-drag-over'); });
+            row.addEventListener('drop', async function (e) {
+                e.preventDefault();
+                row.classList.remove('cat-mgr-drag-over');
+                var targetKey = row.dataset.key;
+                if (!dragKey || dragKey === targetKey) return;
+                // Reorder categoryOrder array
+                var order = (categoryOrder || App.Utils.DEFAULT_CATEGORY_ORDER).slice();
+                var fromIdx = order.indexOf(dragKey);
+                var toIdx = order.indexOf(targetKey);
+                if (fromIdx === -1 || toIdx === -1) return;
+                var item = order.splice(fromIdx, 1)[0];
+                order.splice(toIdx, 0, item);
+                categoryOrder = order;
+                await App.Storage.updateCategoryOrder(currentExamId, order);
+                cachedExam.categoryOrder = order;
+                showManageCategoriesModal({ expandedKey: expandedKey });
+            });
+            row.addEventListener('dragend', function () {
+                document.querySelectorAll('.cat-mgr-drag-over').forEach(function (x) { x.classList.remove('cat-mgr-drag-over'); });
+                row.classList.remove('cat-mgr-dragging');
+                dragKey = null;
+            });
         });
 
         document.getElementById('btn-add-category').addEventListener('click', function () {

@@ -47,14 +47,23 @@ App.Draft = (function () {
     }
 
     // Batch-push all local draft grades to Firestore.
-    async function publish(examId, userId) {
+    // onProgress (optional) is called with { done, total, currentKey } after each write.
+    async function publish(examId, userId, onProgress) {
         var draft = getDraft(examId, userId);
-        var keys = Object.keys(draft);
-        for (var i = 0; i < keys.length; i++) {
-            var exId = keys[i];
-            var catKeys = Object.keys(draft[exId]);
-            for (var j = 0; j < catKeys.length; j++) {
-                await App.Storage.updateGrade(examId, exId, catKeys[j], draft[exId][catKeys[j]]);
+        // Flatten to a list of writes so the caller sees accurate total count
+        var writes = [];
+        Object.keys(draft).forEach(function (exId) {
+            Object.keys(draft[exId]).forEach(function (catKey) {
+                writes.push({ exId: exId, catKey: catKey, value: draft[exId][catKey] });
+            });
+        });
+        var total = writes.length;
+        for (var i = 0; i < writes.length; i++) {
+            var w = writes[i];
+            await App.Storage.updateGrade(examId, w.exId, w.catKey, w.value);
+            if (typeof onProgress === 'function') {
+                try { onProgress({ done: i + 1, total: total, currentKey: w.catKey }); }
+                catch (e) { /* ignore handler errors */ }
             }
         }
         localStorage.removeItem(_draftKey(examId, userId));
