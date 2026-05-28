@@ -202,8 +202,7 @@ thead .sticky-col {
 }
 
 /* Drag handles */
-.drag-handle,
-.drag-handle-row {
+.drag-handle {
     cursor: grab;
     opacity: 0.4;
     font-size: 0.75rem;
@@ -212,20 +211,11 @@ thead .sticky-col {
     display: inline-block;
     vertical-align: middle;
     transition: opacity var(--transition);
-}
-
-.drag-handle {
     color: rgba(255,255,255,0.7);
     margin-bottom: 2px;
 }
 
-.drag-handle-row {
-    color: var(--primary);
-    margin-inline-end: 4px;
-}
-
-.drag-handle:hover,
-.drag-handle-row:hover {
+.drag-handle:hover {
     opacity: 1;
 }
 
@@ -430,8 +420,7 @@ thead .sticky-col {
     }
     .remove-examinee-btn,
     .export-rec-btn,
-    .drag-handle,
-    .drag-handle-row {
+    .drag-handle {
         display: none !important;
     }
 }
@@ -829,6 +818,8 @@ thead .sticky-col {
     transition: box-shadow 0.15s, border-color 0.15s;
 }
 .cat-mgr-row.expanded { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); border-color: var(--primary-light, #c5cae9); }
+.cat-mgr-row.cat-mgr-dragging { opacity: 0.5; }
+.cat-mgr-row.cat-mgr-drag-over { border-color: var(--primary, #1a73e8); border-style: dashed; }
 
 .cat-mgr-summary {
     display: flex;
@@ -838,6 +829,15 @@ thead .sticky-col {
     cursor: pointer;
 }
 .cat-mgr-summary:hover { background: var(--bg, #fafafa); }
+.cat-mgr-drag-handle {
+    cursor: grab;
+    color: var(--text-secondary, #888);
+    font-size: 1.1rem;
+    user-select: none;
+    flex-shrink: 0;
+    padding: 0 4px;
+}
+.cat-mgr-drag-handle:active { cursor: grabbing; }
 .cat-mgr-chevron {
     color: var(--text-secondary, #888);
     font-size: 0.85rem;

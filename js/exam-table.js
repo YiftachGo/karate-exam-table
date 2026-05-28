@@ -194,12 +194,11 @@ App.ExamTable = (function () {
             });
             html += '</tr></thead>';
 
-            // Body rows - categories are draggable
+            // Body rows
             html += '<tbody>';
             categories.forEach(function (cat, idx) {
                 html += '<tr data-cat-key="' + cat.key + '" data-cat-order="' + idx + '">';
-                html += '<td class="sticky-col category-cell"' + (isTouch ? '' : ' draggable="true"') + '>';
-                html += '<span class="drag-handle-row" title="' + t('dragToReorder') + '">&#8942;&#8942;</span> ';
+                html += '<td class="sticky-col category-cell">';
                 html += cat[lang];
                 html += '</td>';
                 examinees.forEach(function (ex) {
@@ -612,38 +611,6 @@ App.ExamTable = (function () {
             });
         });
 
-        // Category row drag
-        document.querySelectorAll('.category-cell[draggable]').forEach(function (el) {
-            var row = el.parentElement;
-            el.addEventListener('dragstart', function (e) {
-                dragType = 'category';
-                dragSrcEl = row;
-                row.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', row.dataset.catKey);
-            });
-            el.addEventListener('dragover', function (e) {
-                if (dragType !== 'category') return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                row.classList.add('drag-over');
-            });
-            el.addEventListener('dragleave', function () {
-                row.classList.remove('drag-over');
-            });
-            el.addEventListener('drop', async function (e) {
-                e.preventDefault();
-                row.classList.remove('drag-over');
-                if (dragType !== 'category' || dragSrcEl === row) return;
-                var fromKey = dragSrcEl.dataset.catKey;
-                var toKey = row.dataset.catKey;
-                await reorderCategories(fromKey, toKey);
-            });
-            el.addEventListener('dragend', function () {
-                row.classList.remove('dragging');
-                document.querySelectorAll('.drag-over').forEach(function (x) { x.classList.remove('drag-over'); });
-            });
-        });
     }
 
     async function reorderExaminees(fromId, toId) {
@@ -1658,9 +1625,10 @@ App.ExamTable = (function () {
         html += '<div class="cat-mgr-list" id="cat-mgr-list">';
         categories.forEach(function (cat) {
             var isExpanded = expandedKey === cat.key;
-            html += '<div class="cat-mgr-row' + (isExpanded ? ' expanded' : '') + '" data-key="' + cat.key + '">';
+            html += '<div class="cat-mgr-row' + (isExpanded ? ' expanded' : '') + '" data-key="' + cat.key + '" draggable="true">';
             // Summary row (always visible): drag handle + chevron + name
             html += '<div class="cat-mgr-summary">';
+            html += '<span class="cat-mgr-drag-handle" title="' + t('dragToReorder') + '">⋮⋮</span>';
             html += '<span class="cat-mgr-chevron">' + (isExpanded ? '▼' : '▶') + '</span>';
             html += '<div class="cat-mgr-name-block">';
             html += '<div class="cat-mgr-name">' + App.Utils.escapeHtml(cat[lang] || cat.he || cat.key) + '</div>';
@@ -1698,6 +1666,7 @@ App.ExamTable = (function () {
         // Per-row click → expand/collapse (one at a time, accordion-style)
         document.querySelectorAll('.cat-mgr-summary').forEach(function (summary) {
             summary.addEventListener('click', function (e) {
+                if (e.target.classList.contains('cat-mgr-drag-handle')) return;
                 var row = summary.closest('.cat-mgr-row');
                 var key = row && row.dataset.key;
                 if (!key) return;
@@ -1739,6 +1708,45 @@ App.ExamTable = (function () {
                 if (!confirm(t('confirmDeleteCategory'))) return;
                 await deleteCategories([btn.dataset.key], 'categoryDeleted');
                 showManageCategoriesModal();
+            });
+        });
+
+        // HTML5 drag-and-drop reordering of category rows in the modal
+        var listEl = document.getElementById('cat-mgr-list');
+        var dragKey = null;
+        document.querySelectorAll('.cat-mgr-row').forEach(function (row) {
+            row.addEventListener('dragstart', function (e) {
+                dragKey = row.dataset.key;
+                row.classList.add('cat-mgr-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragKey); } catch (err) { /* IE */ }
+            });
+            row.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (row.dataset.key !== dragKey) row.classList.add('cat-mgr-drag-over');
+            });
+            row.addEventListener('dragleave', function () { row.classList.remove('cat-mgr-drag-over'); });
+            row.addEventListener('drop', async function (e) {
+                e.preventDefault();
+                row.classList.remove('cat-mgr-drag-over');
+                var targetKey = row.dataset.key;
+                if (!dragKey || dragKey === targetKey) return;
+                var order = (categoryOrder || App.Utils.DEFAULT_CATEGORY_ORDER).slice();
+                var fromIdx = order.indexOf(dragKey);
+                var toIdx = order.indexOf(targetKey);
+                if (fromIdx === -1 || toIdx === -1) return;
+                var item = order.splice(fromIdx, 1)[0];
+                order.splice(toIdx, 0, item);
+                categoryOrder = order;
+                await App.Storage.updateCategoryOrder(currentExamId, order);
+                cachedExam.categoryOrder = order;
+                showManageCategoriesModal({ expandedKey: expandedKey });
+            });
+            row.addEventListener('dragend', function () {
+                document.querySelectorAll('.cat-mgr-drag-over').forEach(function (x) { x.classList.remove('cat-mgr-drag-over'); });
+                row.classList.remove('cat-mgr-dragging');
+                dragKey = null;
             });
         });
 

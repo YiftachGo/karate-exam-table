@@ -90,8 +90,7 @@
 
 /* Touch-friendly */
 @media (hover: none) and (pointer: coarse) {
-    .drag-handle,
-    .drag-handle-row {
+    .drag-handle {
         display: none;
     }
 
