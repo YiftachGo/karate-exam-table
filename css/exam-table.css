@@ -810,9 +810,11 @@ thead .sticky-col {
     font-size: 0.75rem;
     height: 26px;
     padding: 0 8px;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.55);
 }
 
-/* === Manage Categories: expandable rows + drag === */
+/* === Manage Categories: expandable rows === */
 .cat-mgr-list {
     display: flex;
     flex-direction: column;
@@ -826,8 +828,6 @@ thead .sticky-col {
     border-radius: 8px;
     transition: box-shadow 0.15s, border-color 0.15s;
 }
-.cat-mgr-row.cat-mgr-dragging { opacity: 0.5; }
-.cat-mgr-row.cat-mgr-drag-over { border-color: var(--primary, #1a73e8); border-style: dashed; }
 .cat-mgr-row.expanded { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); border-color: var(--primary-light, #c5cae9); }
 
 .cat-mgr-summary {
@@ -838,15 +838,6 @@ thead .sticky-col {
     cursor: pointer;
 }
 .cat-mgr-summary:hover { background: var(--bg, #fafafa); }
-.cat-mgr-drag-handle {
-    cursor: grab;
-    color: var(--text-secondary, #888);
-    font-size: 1.1rem;
-    user-select: none;
-    flex-shrink: 0;
-    padding: 0 4px;
-}
-.cat-mgr-drag-handle:active { cursor: grabbing; }
 .cat-mgr-chevron {
     color: var(--text-secondary, #888);
     font-size: 0.85rem;
