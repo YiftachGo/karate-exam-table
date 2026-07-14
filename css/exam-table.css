@@ -17,8 +17,8 @@
 
 .trainer-chip {
     font-size: 0.8rem;
-    background: var(--primary-light, #e8f0fe);
-    color: var(--primary-dark);
+    background: var(--primary);
+    color: white;
     border-radius: 12px;
     padding: 2px 10px;
     font-weight: 500;

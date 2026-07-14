@@ -116,6 +116,7 @@ App.ExamTable = (function () {
         html += '<div class="toolbar">';
         html += '<h2 class="page-title">' + App.Utils.escapeHtml(exam.name) + '</h2>';
         html += '<span class="exam-date-badge">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
+        html += '<span class="exam-date-badge">' + examinees.length + ' ' + t('examinees') + '</span>';
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-add-examinee">+ ' + t('addExaminee') + '</button>';
         html += '<button class="btn btn-outline" id="btn-general-remarks">' + t('generalRemarks') + '</button>';
