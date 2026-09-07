@@ -519,6 +519,288 @@ App.Storage = (function () {
         await docRef.update(update);
     }
 
+    // --- Student Directory (public, exact-key lookup only) ---
+    //
+    // A small public mirror of "who has tested with us before", so a returning
+    // student on the unauthenticated invite page can identify themselves and get
+    // a prefilled card instead of retyping everything.
+    //
+    // Why a mirror and not a query over exams/*/examinees: the invite page has no
+    // Firebase user at all, and findExamineeHistory/searchPastExamineesByName both
+    // start from getExamIndex(), which returns [] without a uid. More importantly,
+    // this data includes minors' names, birthdates and photos — so the collection is
+    // read ONLY by exact document ID and its Firestore rule must be:
+    //
+    //   match /studentDirectory/{key} {
+    //     allow get:   if true;
+    //     allow list:  if false;                  // <- load-bearing: no enumeration
+    //     allow write: if request.auth != null;   // trainers only
+    //   }
+    //
+    // Follows the same public-mirror pattern as examInvitations above.
+
+    var DIRECTORY = 'studentDirectory';
+
+    // Key shapes. The payload lives on the `full-` doc; everything else is a
+    // pointer to it.
+    //   full  — exact normalized name + DOB. Always tried first.
+    //   skel  — consonant skeleton + DOB. Catches an optional vav/yod (כהן/כוהן).
+    //   given / sur — one name + DOB + club, for when the *other* name was
+    //           misspelled. The club is a third factor, so a guessed name alone
+    //           reveals nothing.
+    function _directoryKeys(firstName, lastName, dob, club) {
+        var u = App.Utils;
+        var f = u.looseName(firstName);
+        var l = u.looseName(lastName);
+        var sf = u.skeletonName(firstName);
+        var sl = u.skeletonName(lastName);
+        var d = u.dobDigits(dob);
+        var c = u.looseClub(club);
+        var full = 'full-' + f + '_' + l + '_' + d;
+        var skel = 'skel-' + sf + '_' + sl + '_' + d;
+        return {
+            full: full,
+            // Only useful when it actually differs from the exact key.
+            skel: skel !== 'skel-' + f + '_' + l + '_' + d ? skel : null,
+            given: c ? 'given-' + f + '_' + d + '_' + c : null,
+            sur: c ? 'sur-' + l + '_' + d + '_' + c : null
+        };
+    }
+
+    async function _getDirectoryDoc(key) {
+        if (!key) return null;
+        try {
+            var doc = await App.db.collection(DIRECTORY).doc(key).get();
+            return doc.exists ? doc.data() : null;
+        } catch (e) {
+            console.warn('studentDirectory lookup failed for', key, e);
+            return null;
+        }
+    }
+
+    // Follows a pointer doc through to its payload; passes a payload straight back.
+    // An alias marked ambiguous resolves to nothing on purpose — two different
+    // students share that looser key, so guessing one of them would be wrong.
+    // The caller then falls through to asking for more detail (the club step).
+    async function _resolveDirectoryEntry(doc) {
+        if (!doc || doc.ambiguous) return null;
+        if (doc.target) return await _getDirectoryDoc(doc.target);
+        return doc;
+    }
+
+    // Exact name + DOB, then the consonant-skeleton fallback. Exact always wins,
+    // so two similar names both present in the directory never cross over.
+    async function lookupStudentDirectory(firstName, lastName, dob) {
+        if (!App.Utils.dobDigits(dob)) return null;
+        var keys = _directoryKeys(firstName, lastName, dob, '');
+        var hit = await _getDirectoryDoc(keys.full);
+        if (hit) return await _resolveDirectoryEntry(hit);
+        if (keys.skel) {
+            hit = await _getDirectoryDoc(keys.skel);
+            if (hit) return await _resolveDirectoryEntry(hit);
+        }
+        return null;
+    }
+
+    // Tier 3: one of the two names was spelled differently. Requires the club as
+    // an extra verification factor, then resolves the pointer to the payload.
+    async function lookupStudentDirectoryByClub(firstName, lastName, dob, club) {
+        if (!App.Utils.dobDigits(dob) || !club) return null;
+        var keys = _directoryKeys(firstName, lastName, dob, club);
+        var alias = await _getDirectoryDoc(keys.given);
+        if (!alias) alias = await _getDirectoryDoc(keys.sur);
+        return await _resolveDirectoryEntry(alias);
+    }
+
+    // Decide the rank a returning student currently holds, from the source exam's
+    // actual result. rank_approval is stored per trainer on the grade doc as
+    // 'pass' | 'fail' | 'conditional:<text>' | '', with the awarded rank alongside
+    // in rank_approval_newRank.
+    //
+    // The app defines no quorum or head-examiner rule, so this is deliberately
+    // conservative: promote only if someone approved and nobody failed. A
+    // disagreement falls back to the previous rank, which the student can correct
+    // on the form. A conditional pass counts as a pass — consistent with the
+    // grading UI, which offers the newRank dropdown for conditional too.
+    function resolveCurrentRank(trainerGrades, examineeData) {
+        var verdicts = [], awarded = '';
+        (trainerGrades || []).forEach(function (g) {
+            var v = g['rank_approval'] || '';
+            if (!v) return;
+            verdicts.push(v.indexOf('conditional:') === 0 ? 'pass' : v);
+            if (!awarded && g['rank_approval_newRank']) awarded = g['rank_approval_newRank'];
+        });
+        var passed = verdicts.indexOf('pass') !== -1 && verdicts.indexOf('fail') === -1;
+        if (passed) return awarded || examineeData.targetRank || examineeData.rank || '';
+        return examineeData.rank || '';
+    }
+
+    // Upsert one student's directory entry. Trainer-authenticated only.
+    // `currentRank` should already be resolved by the caller.
+    async function upsertStudentDirectory(examineeData, opts) {
+        opts = opts || {};
+        var first = (examineeData.firstName || '').trim();
+        var last = (examineeData.lastName || '').trim();
+        var dob = examineeData.dateOfBirth || '';
+        var club = examineeData.club || '';
+
+        // Without a name and a birthdate there is no usable key.
+        if (!first || !last || !App.Utils.dobDigits(dob)) return false;
+
+        var keys = _directoryKeys(first, last, dob, club);
+        var sourceExamDate = opts.sourceExamDate || '';
+
+        // Staleness guard: never let an older exam clobber a newer entry.
+        var existing = await _getDirectoryDoc(keys.full);
+        if (existing && existing.sourceExamDate && sourceExamDate &&
+            existing.sourceExamDate > sourceExamDate) {
+            return false;
+        }
+
+        // The post-grading sync resolves currentRank from the exam result and may
+        // have promoted this student. A later edit of their personal details must
+        // not silently demote them back to the pre-exam rank, so that path sets
+        // preferExistingRank and we keep whatever the sync already resolved.
+        var resolvedRank = opts.currentRank !== undefined ? opts.currentRank : (examineeData.rank || '');
+        if (opts.preferExistingRank && existing && existing.currentRank) {
+            resolvedRank = existing.currentRank;
+        }
+
+        var payload = {
+            firstName: first,
+            lastName: last,
+            dateOfBirth: dob,
+            club: club,
+            currentRank: resolvedRank,
+            trainingStartDate: examineeData.trainingStartDate || '',
+            trainingsPerWeek: examineeData.trainingsPerWeek || '',
+            lastExamDate: sourceExamDate || examineeData.lastExamDate || '',
+            beltTrainings: Array.isArray(examineeData.beltTrainings) ? examineeData.beltTrainings : [],
+            gasshukus: Array.isArray(examineeData.gasshukus) ? examineeData.gasshukus : [],
+            photoUrl: examineeData.photoUrl || '',
+            sourceExamId: opts.sourceExamId || '',
+            sourceExamineeId: opts.sourceExamineeId || '',
+            sourceExamDate: sourceExamDate,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        // NOTE: selfEditToken, invitationCode, examPayment, formSubmitted,
+        // theoryExamGrade, linkedRecordIds and anything from `grades` are
+        // deliberately absent. Do not add them — this doc is publicly readable.
+
+        // Aliases point back at the payload. If an alias key is already claimed by
+        // a *different* student, mark it ambiguous rather than stealing it — the
+        // lookup then declines to guess and asks for the club instead.
+        var aliasKeys = [keys.skel, keys.given, keys.sur].filter(Boolean);
+        var aliasDocs = await Promise.all(aliasKeys.map(function (k) {
+            return _getDirectoryDoc(k);
+        }));
+
+        var stamp = firebase.firestore.FieldValue.serverTimestamp();
+        var batch = App.db.batch();
+        batch.set(App.db.collection(DIRECTORY).doc(keys.full), payload);
+        aliasKeys.forEach(function (k, i) {
+            var prior = aliasDocs[i];
+            var claimedByOther = prior && !prior.ambiguous &&
+                prior.target && prior.target !== keys.full;
+            batch.set(App.db.collection(DIRECTORY).doc(k),
+                claimedByOther
+                    ? { ambiguous: true, updatedAt: stamp }
+                    : { target: keys.full, updatedAt: stamp });
+        });
+        await batch.commit();
+        return true;
+    }
+
+    // Walk one exam and upsert a directory entry per examinee, resolving each
+    // student's rank from that exam's recorded result. Doubles as the one-time
+    // backfill for exams that predate this feature.
+    async function syncStudentDirectoryForExam(examId) {
+        var examDoc = await App.db.collection('exams').doc(examId).get();
+        if (!examDoc.exists) throw new Error('not_found');
+        var examDate = examDoc.data().date || '';
+
+        var examineesSnap = await App.db.collection('exams').doc(examId)
+            .collection('examinees').get();
+
+        // One read of the whole grades subcollection, then index by examinee.
+        var gradesSnap = await App.db.collection('exams').doc(examId)
+            .collection('grades').get();
+        var gradesByExaminee = {};
+        gradesSnap.docs.forEach(function (d) {
+            var examineeId = d.id.split('__')[0];
+            if (!gradesByExaminee[examineeId]) gradesByExaminee[examineeId] = [];
+            gradesByExaminee[examineeId].push(d.data());
+        });
+
+        var synced = 0, skipped = 0;
+        for (var i = 0; i < examineesSnap.docs.length; i++) {
+            var d = examineesSnap.docs[i];
+            var data = d.data();
+            var rank = resolveCurrentRank(gradesByExaminee[d.id], data);
+            var ok = false;
+            try {
+                ok = await upsertStudentDirectory(data, {
+                    currentRank: rank,
+                    sourceExamId: examId,
+                    sourceExamineeId: d.id,
+                    sourceExamDate: examDate
+                });
+            } catch (e) {
+                console.warn('directory sync failed for examinee', d.id, e);
+            }
+            if (ok) synced++; else skipped++;
+        }
+        return { synced: synced, skipped: skipped, total: examineesSnap.docs.length };
+    }
+
+    // Creates this exam's examinee record for a recognised returning student,
+    // prefilled from their directory entry and linked back to the source record.
+    // Mirrors selfRegisterExaminee — same token scheme, same cosmetic count bump.
+    async function selfRegisterReturning(examId, entry, invitationCode) {
+        var examRef = App.db.collection('exams').doc(examId);
+        var examineeRef = examRef.collection('examinees').doc();
+        var selfEditToken = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+        var linked = [];
+        if (entry.sourceExamId && entry.sourceExamineeId) {
+            linked.push(entry.sourceExamId + '__' + entry.sourceExamineeId);
+        }
+
+        await examineeRef.set({
+            firstName: entry.firstName || '',
+            lastName: entry.lastName || '',
+            dateOfBirth: entry.dateOfBirth || '',
+            rank: entry.currentRank || '',
+            targetRank: '',
+            club: entry.club || '',
+            trainingStartDate: entry.trainingStartDate || '',
+            lastExamDate: entry.lastExamDate || '',
+            trainingsPerWeek: entry.trainingsPerWeek || '',
+            beltTrainings: Array.isArray(entry.beltTrainings) ? entry.beltTrainings : [],
+            gasshukus: Array.isArray(entry.gasshukus) ? entry.gasshukus : [],
+            examPayment: '',
+            photoUrl: entry.photoUrl || '',
+            linkedRecordIds: linked,
+            order: 0,
+            addedBy: 'self-registration:returning',
+            invitationCode: invitationCode,
+            selfEditToken: selfEditToken,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        try {
+            await examRef.update({
+                examineeCount: firebase.firestore.FieldValue.increment(1),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (e) {
+            // May fail for unauthenticated registrants — count is cosmetic
+            console.warn('Could not update exam count:', e);
+        }
+
+        return { id: examineeRef.id, selfEditToken: selfEditToken };
+    }
+
     // --- Copy Examinees ---
 
     async function copyExaminees(sourceExamId, targetExamId, examineeIds) {
@@ -1007,6 +1289,12 @@ App.Storage = (function () {
         selfRegisterExaminee: selfRegisterExaminee,
         getSelfRegistration: getSelfRegistration,
         selfUpdateRegistration: selfUpdateRegistration,
+        lookupStudentDirectory: lookupStudentDirectory,
+        lookupStudentDirectoryByClub: lookupStudentDirectoryByClub,
+        upsertStudentDirectory: upsertStudentDirectory,
+        syncStudentDirectoryForExam: syncStudentDirectoryForExam,
+        resolveCurrentRank: resolveCurrentRank,
+        selfRegisterReturning: selfRegisterReturning,
         exportExam: exportExam,
         importExam: importExam,
         exportExamineesToExcel: exportExamineesToExcel,

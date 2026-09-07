@@ -87,7 +87,7 @@ App.InvitePage = (function () {
             var exam = await App.Storage.verifyInvitationCode(currentExamId, code);
             if (exam) {
                 verifiedExam = exam;
-                showRegistrationForm(code);
+                showIdentifyStep(code);
             } else {
                 errorEl.textContent = t('invalidCode');
                 errorEl.style.display = '';
@@ -325,7 +325,231 @@ App.InvitePage = (function () {
         });
     }
 
-    function showRegistrationForm(code) {
+    // --- Returning-student identification ---
+    //
+    // Step 1 of registration: name + date of birth only. If the student has
+    // tested with us before we recognise them from the public studentDirectory
+    // and hand them a prefilled card instead of the full blank form.
+
+    function showIdentifyStep(code) {
+        var t = App.I18n.t;
+        var container = document.getElementById('app');
+
+        var html = '<div class="invite-page">';
+        html += '<div class="invite-card invite-card-wide">';
+        html += '<h2>' + t('identifyYourself') + '</h2>';
+        html += '<p class="invite-subtitle">' + t('identifySubtitle') + '</p>';
+        html += '<div class="detail-form">';
+        html += '<div class="form-row">';
+        html += identField('firstName', t('firstName'));
+        html += identField('lastName', t('lastName'));
+        html += '</div>';
+        html += identField('dateOfBirth', t('dateOfBirth'), 'date');
+        html += '<div id="ident-error" class="auth-error" style="display:none"></div>';
+        html += '<div class="form-actions">';
+        html += '<button class="btn btn-primary btn-block" id="btn-identify">' + t('continueBtn') + '</button>';
+        html += '</div>';
+        html += '</div></div></div>';
+
+        container.innerHTML = html;
+
+        var btn = document.getElementById('btn-identify');
+        btn.addEventListener('click', async function () {
+            var errorEl = document.getElementById('ident-error');
+            errorEl.style.display = 'none';
+            document.querySelectorAll('.field-invalid').forEach(function (el) { el.classList.remove('field-invalid'); });
+
+            var typed = {
+                firstName: document.getElementById('ident-firstName').value.trim(),
+                lastName: document.getElementById('ident-lastName').value.trim(),
+                dateOfBirth: document.getElementById('ident-dateOfBirth').value
+            };
+
+            var missing = false;
+            ['firstName', 'lastName', 'dateOfBirth'].forEach(function (k) {
+                if (!typed[k]) {
+                    missing = true;
+                    var el = document.getElementById('ident-' + k);
+                    if (el) el.classList.add('field-invalid');
+                }
+            });
+            if (missing) {
+                errorEl.textContent = t('fillNameAndDob');
+                errorEl.style.display = '';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = t('loading');
+            var entry = null;
+            try {
+                entry = await App.Storage.lookupStudentDirectory(
+                    typed.firstName, typed.lastName, typed.dateOfBirth);
+            } catch (e) {
+                // A directory miss must never block registration.
+                console.warn('directory lookup failed', e);
+            }
+            btn.disabled = false;
+            btn.textContent = t('continueBtn');
+
+            if (entry) {
+                showRecognitionCard(entry, typed, code);
+            } else {
+                // No exact match. Ask for the club — it both narrows a possible
+                // spelling variant and is a required form field anyway, so a new
+                // student loses nothing by answering it here.
+                showClubStep(typed, code);
+            }
+        });
+
+        // Enter advances from any of the three fields
+        ['ident-firstName', 'ident-lastName', 'ident-dateOfBirth'].forEach(function (id) {
+            document.getElementById(id).addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') btn.click();
+            });
+        });
+        document.getElementById('ident-firstName').focus();
+    }
+
+    function identField(name, label, type) {
+        var html = '<div class="form-group">';
+        html += '<label>' + label + ' <span class="required-star">*</span></label>';
+        html += '<input type="' + (type || 'text') + '" id="ident-' + name + '">';
+        html += '</div>';
+        return html;
+    }
+
+    // Step 2, only when the name didn't match exactly. The club is the third
+    // verification factor for the spelling-variant lookup, and carries forward
+    // into the form either way.
+    function showClubStep(typed, code) {
+        var t = App.I18n.t;
+        var container = document.getElementById('app');
+
+        var html = '<div class="invite-page">';
+        html += '<div class="invite-card invite-card-wide">';
+        html += '<h2>' + t('selectYourClub') + '</h2>';
+        html += '<p class="invite-subtitle">' + t('selectYourClubSubtitle') + '</p>';
+        html += '<div class="detail-form">';
+        html += regClubSelect(t('club') + ' *', '');
+        html += '<div id="club-error" class="auth-error" style="display:none"></div>';
+        html += '<div class="form-actions">';
+        html += '<button class="btn btn-primary btn-block" id="btn-club-continue">' + t('continueBtn') + '</button>';
+        html += '</div>';
+        html += '</div></div></div>';
+
+        container.innerHTML = html;
+
+        var btn = document.getElementById('btn-club-continue');
+        btn.addEventListener('click', async function () {
+            var errorEl = document.getElementById('club-error');
+            errorEl.style.display = 'none';
+            var club = document.getElementById('reg-club').value.trim();
+            if (!club) {
+                errorEl.textContent = t('fillAllFields');
+                errorEl.style.display = '';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = t('loading');
+            var entry = null;
+            try {
+                entry = await App.Storage.lookupStudentDirectoryByClub(
+                    typed.firstName, typed.lastName, typed.dateOfBirth, club);
+            } catch (e) {
+                console.warn('directory club lookup failed', e);
+            }
+            btn.disabled = false;
+            btn.textContent = t('continueBtn');
+
+            if (entry) {
+                showRecognitionCard(entry, typed, code);
+            } else {
+                showRegistrationForm(code, {
+                    firstName: typed.firstName,
+                    lastName: typed.lastName,
+                    dateOfBirth: typed.dateOfBirth,
+                    club: club
+                });
+            }
+        });
+    }
+
+    // "We found you" — enough detail for the student to recognise themselves,
+    // and nothing more. Reached only after they proved name + DOB (+ club).
+    function showRecognitionCard(entry, typed, code) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var container = document.getElementById('app');
+
+        var html = '<div class="invite-page">';
+        html += '<div class="invite-card invite-card-wide">';
+        html += '<div class="invite-logo">&#128075;</div>';
+        html += '<h2>' + t('weFoundYou') + '</h2>';
+        html += '<p class="invite-subtitle">' + t('isThisYou') + '</p>';
+
+        html += '<div class="recognition-card">';
+        if (entry.photoUrl) {
+            html += '<img class="recognition-photo" src="' + entry.photoUrl + '" alt="">';
+        } else {
+            html += '<div class="recognition-photo recognition-photo-empty">&#128100;</div>';
+        }
+        html += '<div class="recognition-fields">';
+        html += '<div class="recognition-name">' + esc((entry.firstName || '') + ' ' + (entry.lastName || '')) + '</div>';
+        if (entry.club) {
+            html += '<div class="recognition-row"><span>' + t('club') + '</span> ' + esc(entry.club) + '</div>';
+        }
+        if (entry.currentRank) {
+            html += '<div class="recognition-row"><span>' + t('currentRank') + '</span> ' + esc(entry.currentRank) + '</div>';
+        }
+        if (entry.lastExamDate) {
+            html += '<div class="recognition-row"><span>' + t('lastExamDate') + '</span> ' + esc(App.Utils.formatDate(entry.lastExamDate)) + '</div>';
+        }
+        html += '</div></div>';
+
+        html += '<div id="recognition-error" class="auth-error" style="display:none"></div>';
+        html += '<div class="recognition-actions">';
+        html += '<button class="btn btn-primary btn-block" id="btn-thats-me">' + t('yesThisIsMe') + '</button>';
+        html += '<button class="btn btn-outline btn-block" id="btn-not-me">' + t('noNotMe') + '</button>';
+        html += '</div>';
+        html += '</div></div>';
+
+        container.innerHTML = html;
+
+        document.getElementById('btn-thats-me').addEventListener('click', async function () {
+            var btn = this;
+            var errorEl = document.getElementById('recognition-error');
+            errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = t('loading');
+            try {
+                var result = await App.Storage.selfRegisterReturning(currentExamId, entry, code);
+                savePriorRegistration(currentExamId, result.id, result.selfEditToken);
+                App.showToast(t('welcomeBack'));
+                // Hand off to the existing prefilled self-edit screen rather than
+                // rendering a second copy of the same form.
+                App.Router.navigate('#/invite/' + currentExamId + '/edit/' + result.id +
+                    '?t=' + encodeURIComponent(result.selfEditToken));
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = t('yesThisIsMe');
+                errorEl.textContent = t('error') + ': ' + err.message;
+                errorEl.style.display = '';
+            }
+        });
+
+        document.getElementById('btn-not-me').addEventListener('click', function () {
+            // Keep what they typed; discard everything from the matched record.
+            showRegistrationForm(code, {
+                firstName: typed.firstName,
+                lastName: typed.lastName,
+                dateOfBirth: typed.dateOfBirth
+            });
+        });
+    }
+
+    function showRegistrationForm(code, prefill) {
         var t = App.I18n.t;
         var container = document.getElementById('app');
 
@@ -333,7 +557,7 @@ App.InvitePage = (function () {
             t('registrationTitle'),
             App.Utils.escapeHtml(verifiedExam.name) + ' — ' + t('registrationSubtitle'),
             t('submitRegistration'),
-            {}
+            prefill || {}
         );
 
         bindPhotoAndSubmit(

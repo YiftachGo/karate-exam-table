@@ -234,6 +234,52 @@ App.Utils = (function () {
         return readLocationDateList(listEl, { rowClass: 'belt-row' });
     }
 
+    // --- Student directory key normalization ---
+    // Used to build the exact-match document IDs for the public studentDirectory
+    // collection, so a returning student can identify themselves on the invite
+    // page without us ever exposing a listable/queryable collection.
+    //
+    // looseName collapses the spelling variants that actually cause misses in
+    // Hebrew: niqqud, geresh/gershayim, spaces & hyphens, final letter forms,
+    // and doubled ו/י (כהן/כוהן, רועי/רועי, בן-אור/בן אור).
+    function looseName(s) {
+        return (s || '').trim().toLowerCase()
+            .replace(/[֑-ׇ]/g, '')
+            .replace(/['"׳״`‘’]/g, '')
+            .replace(/[\s\-_]/g, '')
+            .replace(/ם/g, 'מ')   // ם -> מ
+            .replace(/ן/g, 'נ')   // ן -> נ
+            .replace(/ץ/g, 'צ')   // ץ -> צ
+            .replace(/ף/g, 'פ')   // ף -> פ
+            .replace(/ך/g, 'כ')   // ך -> כ
+            .replace(/ו{2,}/g, 'ו')
+            .replace(/י{2,}/g, 'י');
+    }
+
+    // The consonant skeleton: looseName with vav/yod matres lectionis removed.
+    // This is what catches the single most common Hebrew variant — an optional
+    // vav or yod, as in כהן/כוהן or דוד/דויד — which looseName alone cannot,
+    // since only doubled letters collapse there.
+    //
+    // It is deliberately NOT used as the primary key, because it also collapses
+    // genuinely different names (שרה/שירה). It is only ever a fallback alias,
+    // tried after the exact key misses, so precision always wins when both exist.
+    function skeletonName(s) {
+        return looseName(s).replace(/[וי]/g, '');
+    }
+
+    // Date of birth reduced to digits only, so '2011-04-07' and '07/04/2011'
+    // never produce different keys for the same person.
+    function dobDigits(dob) {
+        return (dob || '').replace(/\D/g, '');
+    }
+
+    // Clubs come from a fixed dropdown, but normalize anyway so a stored value
+    // with different spacing still keys consistently.
+    function looseClub(club) {
+        return looseName(club);
+    }
+
     // Returns a CSS class name representing the belt color of the given rank.
     // Used to color-code examinee row headers in the exam table.
     // Order matters: check more-specific keywords first. For gradient ranks like
@@ -271,6 +317,10 @@ App.Utils = (function () {
         renderBeltTrainingsList: renderBeltTrainingsList,
         readBeltTrainingsList: readBeltTrainingsList,
         isBlackBeltRank: isBlackBeltRank,
-        getRankColorClass: getRankColorClass
+        getRankColorClass: getRankColorClass,
+        looseName: looseName,
+        skeletonName: skeletonName,
+        dobDigits: dobDigits,
+        looseClub: looseClub
     };
 })();

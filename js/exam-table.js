@@ -131,6 +131,7 @@ App.ExamTable = (function () {
         html += '<button class="menu-item" data-action="copy">' + t('copyExaminees') + '</button>';
         html += '<button class="menu-item" data-action="import">' + t('importStudents') + '</button>';
         html += '<button class="menu-item" data-action="export">' + t('export') + '</button>';
+        html += '<button class="menu-item" data-action="sync-directory">' + t('syncStudentDirectory') + '</button>';
         if (isOwner) {
             html += '<button class="menu-item" data-action="share">' + t('shareExam') + '</button>';
             html += '<button class="menu-item" data-action="invite">' + t('inviteExaminees') + '</button>';
@@ -687,6 +688,29 @@ App.ExamTable = (function () {
         await applyExamineeOrder(list.map(function (e) { return e.id; }));
     }
 
+    // Publishes this exam's examinees into the public studentDirectory so they can
+    // self-identify on a future exam's invite page. Resolves each student's current
+    // rank from this exam's recorded result, so run it AFTER grading is finished.
+    // Also serves as the one-time backfill for exams predating the directory.
+    async function syncStudentDirectory() {
+        var t = App.I18n.t;
+        App.showToast(t('directorySyncing'));
+        try {
+            var res = await App.Storage.syncStudentDirectoryForExam(currentExamId);
+            var msg = t('directorySynced') + ' (' + res.synced + '/' + res.total + ')';
+            App.showToast(msg);
+            if (res.skipped) {
+                // Skipped students are missing a name or a date of birth, so they
+                // have no usable directory key.
+                console.info('directory sync skipped ' + res.skipped +
+                    ' examinee(s) with no name or date of birth');
+            }
+        } catch (err) {
+            console.error('directory sync failed:', err);
+            App.showToast(t('error') + ': ' + err.message);
+        }
+    }
+
     function showExportModal() {
         var t = App.I18n.t;
         var modalContainer = document.getElementById('modal-container');
@@ -1110,6 +1134,7 @@ App.ExamTable = (function () {
             else if (action === 'copy') showCopyExamineesModal();
             else if (action === 'import') document.getElementById('import-students-file').click();
             else if (action === 'export') showExportModal();
+            else if (action === 'sync-directory') syncStudentDirectory();
             else if (action === 'share') showShareModal();
             else if (action === 'invite') showInviteModal();
         });

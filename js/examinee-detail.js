@@ -184,7 +184,7 @@ App.ExamineeDetail = (function () {
         });
 
         document.getElementById('btn-save-examinee').addEventListener('click', function () {
-            saveExaminee(examId, examineeId);
+            saveExaminee(examId, examineeId, exam.date || '');
         });
 
         document.getElementById('field-dateOfBirth').addEventListener('change', function () {
@@ -352,7 +352,7 @@ App.ExamineeDetail = (function () {
         input.focus();
     }
 
-    async function saveExaminee(examId, examineeId) {
+    async function saveExaminee(examId, examineeId, examDate) {
         var data = {
             firstName: document.getElementById('field-firstName').value.trim(),
             lastName: document.getElementById('field-lastName').value.trim(),
@@ -370,6 +370,28 @@ App.ExamineeDetail = (function () {
             theoryExamGrade: document.getElementById('field-theoryExamGrade').value.trim()
         };
         await App.Storage.updateExaminee(examId, examineeId, data);
+
+        // Keep the public student directory in step with the trainer's edits, so a
+        // returning student can still self-identify next season. Rank here is
+        // whatever the trainer selected — the post-grading rank is resolved by the
+        // explicit "Sync Student Directory" action in the exam toolbar.
+        // Best-effort: a directory failure must never lose the trainer's save.
+        try {
+            var photoEl = document.getElementById('examinee-photo');
+            await App.Storage.upsertStudentDirectory(
+                Object.assign({}, data, { photoUrl: photoEl ? photoEl.src : '' }),
+                {
+                    currentRank: data.rank || '',
+                    preferExistingRank: true,
+                    sourceExamId: examId,
+                    sourceExamineeId: examineeId,
+                    sourceExamDate: examDate || ''
+                }
+            );
+        } catch (e) {
+            console.warn('studentDirectory upsert failed:', e);
+        }
+
         App.showToast(App.I18n.t('dataSaved'));
         App.Router.navigate('#/exam/' + examId);
     }
