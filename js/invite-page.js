@@ -131,7 +131,13 @@ App.InvitePage = (function () {
 
         html += '<div class="form-row">';
         html += regField('dateOfBirth', t('dateOfBirth'), 'date', true, prefill.dateOfBirth);
-        html += App.Utils.buildRankSelect('reg-rank', prefill.rank || '', t('rank') + ' *');
+        // Narrow the belt list to the exam's ladder when we know it. Reaching the
+        // edit screen straight from a saved link leaves verifiedExam unset, in
+        // which case all belts are shown — the safe default, since a filtered list
+        // that omitted the student's current belt would deselect it.
+        html += App.Utils.buildRankSelect('reg-rank', prefill.rank || '', t('rank') + ' *', {
+            beltSystem: (verifiedExam && verifiedExam.beltSystem) || ''
+        });
         html += '</div>';
 
         html += regClubSelect(t('club') + ' *', prefill.club);
@@ -207,6 +213,8 @@ App.InvitePage = (function () {
     function bindPhotoAndSubmit(onPhotoSelected, onSubmit, submitLabel, existingPhotoUrl, initialGasshukus, initialBeltTrainings) {
         var t = App.I18n.t;
         var selectedPhotoFile = null;
+
+        App.Utils.bindRankShowAll(document);
 
         App.Utils.renderGasshukuList(
             document.getElementById('gasshuku-list'),
@@ -624,29 +632,9 @@ App.InvitePage = (function () {
         );
     }
 
-    var CLUBS = [
-        { value: 'הונבו דוג\'ו - נתניה', display: 'הונבו דוג\'ו - נתניה (סנסיי אריאל בן סימון, בועז היליג, מישל יוסבשוילי)' },
-        { value: 'דוג\'ו אבן יהודה', display: 'דוג\'ו אבן יהודה (סנסיי יואל שחר, יוסף אילוז)' },
-        { value: 'דוג\'ו באר שבע', display: 'דוג\'ו באר שבע (סנסיי יפתח גוברין)' },
-        { value: 'דוג\'ו עמק חפר', display: 'דוג\'ו עמק חפר (סנסיי עמוס דניאלי)' },
-        { value: 'דוג\'ו עתלית', display: 'דוג\'ו עתלית (סנסיי קאטי פרש)' },
-        { value: 'דוג\'ו פרדסיה', display: 'דוג\'ו פרדסיה (סנסיי אופיר הורביץ)' },
-        { value: 'דוג\'ו קרית השרון', display: 'דוג\'ו קרית השרון (סנסיי בועז הייליג)' },
-        { value: 'דוג\'ו תל אביב', display: 'דוג\'ו תל אביב (סנסיי יפתח גוברין)' }
-    ];
-
+    // Dojo list lives in App.Utils.CLUBS — see buildClubSelect there.
     function regClubSelect(label, currentVal) {
-        var html = '<div class="form-group">';
-        html += '<label>' + label + '</label>';
-        html += '<select id="reg-club">';
-        html += '<option value=""></option>';
-        CLUBS.forEach(function (club) {
-            var selected = currentVal === club.value ? ' selected' : '';
-            html += '<option value="' + App.Utils.escapeHtml(club.value) + '"' + selected + '>' + App.Utils.escapeHtml(club.display) + '</option>';
-        });
-        html += '</select>';
-        html += '</div>';
-        return html;
+        return App.Utils.buildClubSelect('reg-club', currentVal, label);
     }
 
     function regField(name, label, type, required, value) {

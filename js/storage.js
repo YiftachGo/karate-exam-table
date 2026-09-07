@@ -37,7 +37,13 @@ App.Storage = (function () {
                     date: d.date,
                     createdAt: d.createdAt,
                     examineeCount: countSnap.size,
-                    ownerId: d.ownerId
+                    ownerId: d.ownerId,
+                    // Dojo/class grouping. This projection is the only thing the
+                    // exam list sees, so a field missing here is invisible to it.
+                    dojo: d.dojo || '',
+                    classGroup: d.classGroup || '',
+                    groupKey: d.groupKey || '',
+                    beltSystem: d.beltSystem || ''
                 };
             }));
             // Sort client-side (avoids needing composite index)
@@ -83,9 +89,15 @@ App.Storage = (function () {
         return exam;
     }
 
-    async function createExam(name, date) {
+    // opts: { dojo, classGroup, beltSystem } — all optional. An exam with no dojo
+    // and class belongs to no group, gets an empty groupKey, and behaves exactly
+    // as exams did before grouping existed.
+    async function createExam(name, date, opts) {
+        opts = opts || {};
         var userId = App.Auth.getUserId();
         var userName = App.Auth.getUserName();
+        var dojo = opts.dojo || '';
+        var classGroup = (opts.classGroup || '').trim();
         var docRef = await App.db.collection('exams').add({
             name: name,
             date: date,
@@ -95,13 +107,22 @@ App.Storage = (function () {
             trainerIds: [userId],
             trainerNames: {},
             invitationCode: '',
-            examineeCount: 0
+            examineeCount: 0,
+            dojo: dojo,
+            classGroup: classGroup,
+            beltSystem: opts.beltSystem || '',
+            groupKey: App.Utils.examGroupKey(dojo, classGroup)
         });
         // Store trainer name mapping
         var nameUpdate = {};
         nameUpdate['trainerNames.' + userId] = userName;
         await docRef.update(nameUpdate);
-        return { id: docRef.id, name: name, date: date };
+        return {
+            id: docRef.id, name: name, date: date,
+            dojo: dojo, classGroup: classGroup,
+            beltSystem: opts.beltSystem || '',
+            groupKey: App.Utils.examGroupKey(dojo, classGroup)
+        };
     }
 
     async function deleteExam(examId) {
@@ -416,22 +437,26 @@ App.Storage = (function () {
         var examDoc = await examRef.get();
         var exam = examDoc.data();
         await examRef.update({ invitationCode: code });
-        // Write public invitation doc — contains only code/name/date, not the full exam
+        // Write public invitation doc — only code/name/date/beltSystem, not the
+        // full exam. beltSystem is a belt-ladder name (no PII) and lets the
+        // registration form show the right belts.
         await App.db.collection('examInvitations').doc(examId).set({
             code: code,
             name: exam.name || '',
-            date: exam.date || ''
+            date: exam.date || '',
+            beltSystem: exam.beltSystem || ''
         });
         return code;
     }
 
     // Syncs the public examInvitations doc — called when trainer opens the invite modal
     // to ensure backward-compatible exams (created before examInvitations existed) still work
-    async function syncInvitationDoc(examId, code, name, date) {
+    async function syncInvitationDoc(examId, code, name, date, beltSystem) {
         await App.db.collection('examInvitations').doc(examId).set({
             code: code,
             name: name || '',
-            date: date || ''
+            date: date || '',
+            beltSystem: beltSystem || ''
         });
     }
 
@@ -441,7 +466,7 @@ App.Storage = (function () {
         if (!doc.exists) return null;
         var inv = doc.data();
         if (inv.code && inv.code === code.toUpperCase()) {
-            return { id: examId, name: inv.name, date: inv.date };
+            return { id: examId, name: inv.name, date: inv.date, beltSystem: inv.beltSystem || '' };
         }
         return null;
     }
@@ -612,17 +637,19 @@ App.Storage = (function () {
         return await _resolveDirectoryEntry(alias);
     }
 
-    // Decide the rank a returning student currently holds, from the source exam's
-    // actual result. rank_approval is stored per trainer on the grade doc as
-    // 'pass' | 'fail' | 'conditional:<text>' | '', with the awarded rank alongside
-    // in rank_approval_newRank.
+    // Decide what an exam's recorded result means for a student. rank_approval is
+    // stored per trainer on the grade doc as 'pass' | 'fail' | 'conditional:<text>'
+    // | '', with the awarded rank alongside in rank_approval_newRank.
     //
     // The app defines no quorum or head-examiner rule, so this is deliberately
     // conservative: promote only if someone approved and nobody failed. A
-    // disagreement falls back to the previous rank, which the student can correct
-    // on the form. A conditional pass counts as a pass — consistent with the
-    // grading UI, which offers the newRank dropdown for conditional too.
-    function resolveCurrentRank(trainerGrades, examineeData) {
+    // disagreement resolves to 'none' and keeps the previous rank, which a trainer
+    // or the student can correct. A conditional pass counts as a pass — consistent
+    // with the grading UI, which offers the newRank dropdown for conditional too.
+    //
+    // Returns { verdict: 'pass' | 'fail' | 'none', awardedRank, newRank }.
+    function resolveExamOutcome(trainerGrades, examineeData) {
+        var ex = examineeData || {};
         var verdicts = [], awarded = '';
         (trainerGrades || []).forEach(function (g) {
             var v = g['rank_approval'] || '';
@@ -630,9 +657,27 @@ App.Storage = (function () {
             verdicts.push(v.indexOf('conditional:') === 0 ? 'pass' : v);
             if (!awarded && g['rank_approval_newRank']) awarded = g['rank_approval_newRank'];
         });
-        var passed = verdicts.indexOf('pass') !== -1 && verdicts.indexOf('fail') === -1;
-        if (passed) return awarded || examineeData.targetRank || examineeData.rank || '';
-        return examineeData.rank || '';
+
+        var hasPass = verdicts.indexOf('pass') !== -1;
+        var hasFail = verdicts.indexOf('fail') !== -1;
+
+        var verdict = 'none';
+        if (hasPass && !hasFail) verdict = 'pass';
+        else if (hasFail && !hasPass) verdict = 'fail';
+        // pass + fail together stays 'none' — trainers disagreed, don't guess.
+
+        return {
+            verdict: verdict,
+            awardedRank: awarded,
+            newRank: verdict === 'pass'
+                ? (awarded || ex.targetRank || ex.rank || '')
+                : (ex.rank || '')
+        };
+    }
+
+    // Kept for the studentDirectory callers, which only need the resolved rank.
+    function resolveCurrentRank(trainerGrades, examineeData) {
+        return resolveExamOutcome(trainerGrades, examineeData).newRank;
     }
 
     // Upsert one student's directory entry. Trainer-authenticated only.
@@ -848,6 +893,122 @@ App.Storage = (function () {
         return addedCount;
     }
 
+    // --- Dojo/class groups ---
+
+    // Most recent other exam sharing this exam's dojo+class, or null.
+    // Matches client-side on the normalized groupKey: getExamIndex already pulls
+    // the trainer's exams wholesale, so a second where() would only buy a
+    // composite index to maintain.
+    async function findPreviousExamInGroup(groupKey, excludeExamId) {
+        if (!groupKey) return null;
+        var all = await getExamIndex();
+        var peers = all.filter(function (e) {
+            return e.groupKey === groupKey && e.id !== excludeExamId;
+        });
+        if (!peers.length) return null;
+        // Prefer the latest exam date; fall back to creation order (getExamIndex
+        // already returns newest-created first).
+        peers.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+        return peers[0];
+    }
+
+    // Roster of a previous exam with each student's outcome resolved, ready for
+    // the import review screen. One getExam call — it already stitches examinees
+    // and allGrades together, so outcomes need no extra reads.
+    async function getGroupImportCandidates(sourceExamId) {
+        var exam = await getExam(sourceExamId);
+        if (!exam) return [];
+        var out = [];
+        Object.keys(exam.examinees || {}).forEach(function (id) {
+            var ex = exam.examinees[id];
+            var byTrainer = (exam.allGrades && exam.allGrades[id]) || {};
+            var outcome = resolveExamOutcome(Object.values(byTrainer), ex);
+            out.push({
+                examineeId: id,
+                firstName: ex.firstName || '',
+                lastName: ex.lastName || '',
+                oldRank: ex.rank || '',
+                previousTargetRank: ex.targetRank || '',
+                verdict: outcome.verdict,
+                newRank: outcome.newRank,
+                promoted: outcome.verdict === 'pass' && outcome.newRank !== (ex.rank || ''),
+                // Passed -> the trainer picks a fresh goal. Failed or ungraded ->
+                // they are re-testing for the same belt, so keep it.
+                newTargetRank: outcome.verdict === 'pass' ? '' : (ex.targetRank || ''),
+                order: typeof ex.order === 'number' ? ex.order : 0
+            });
+        });
+        out.sort(function (a, b) { return a.order - b.order; });
+        return out;
+    }
+
+    // Copies students from the group's previous exam into targetExamId.
+    //
+    // Distinct from copyExaminees (a push: "send these students to that exam"),
+    // which carries rank/targetRank over verbatim with no promotion and drags
+    // examPayment across exams. Here `items` holds the values the trainer just
+    // approved on the review screen, so what was reviewed is what gets written.
+    //
+    // items: [{ examineeId, rank, targetRank }]
+    async function importExamineesFromGroup(sourceExamId, targetExamId, items) {
+        if (!items || !items.length) return 0;
+
+        var targetRef = App.db.collection('exams').doc(targetExamId);
+        var targetDoc = await targetRef.get();
+        var targetData = targetDoc.data() || {};
+        var currentCount = targetData.examineeCount || 0;
+        var targetDojo = targetData.dojo || '';
+
+        var sourceDoc = await App.db.collection('exams').doc(sourceExamId).get();
+        var sourceDate = sourceDoc.exists ? (sourceDoc.data().date || '') : '';
+
+        var batch = App.db.batch();
+        var added = 0;
+
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var snap = await App.db.collection('exams').doc(sourceExamId)
+                .collection('examinees').doc(item.examineeId).get();
+            if (!snap.exists) continue;
+            var ex = snap.data();
+
+            batch.set(targetRef.collection('examinees').doc(), {
+                firstName: ex.firstName || '',
+                lastName: ex.lastName || '',
+                dateOfBirth: ex.dateOfBirth || '',
+                // The reviewed values, not the source's.
+                rank: item.rank || '',
+                targetRank: item.targetRank || '',
+                club: ex.club || targetDojo,
+                trainingStartDate: ex.trainingStartDate || '',
+                // They sat the source exam, so that is now their last exam.
+                lastExamDate: sourceDate || ex.lastExamDate || '',
+                trainingsPerWeek: ex.trainingsPerWeek || '',
+                beltTrainings: Array.isArray(ex.beltTrainings) ? ex.beltTrainings : [],
+                gasshukus: Array.isArray(ex.gasshukus) ? ex.gasshukus : [],
+                // Per-exam paperwork starts clean for the new exam.
+                examPayment: '',
+                formSubmitted: '',
+                theoryExamGrade: '',
+                photoUrl: ex.photoUrl || '',
+                linkedRecordIds: [sourceExamId + '__' + item.examineeId],
+                order: currentCount + added,
+                addedBy: 'imported-group:' + sourceExamId,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            added++;
+        }
+
+        if (added > 0) {
+            await batch.commit();
+            await targetRef.update({
+                examineeCount: firebase.firestore.FieldValue.increment(added),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        return added;
+    }
+
     // --- Category Management ---
 
     async function updateCategoryOrder(examId, order) {
@@ -890,6 +1051,7 @@ App.Storage = (function () {
                 var userName = App.Auth.getUserName();
 
                 // Create exam doc
+                // Keep this field set in step with createExam above.
                 var examData = {
                     name: data.name || 'Imported Exam',
                     date: data.date || '',
@@ -899,7 +1061,11 @@ App.Storage = (function () {
                     trainerIds: [userId],
                     trainerNames: {},
                     invitationCode: '',
-                    examineeCount: 0
+                    examineeCount: 0,
+                    dojo: data.dojo || '',
+                    classGroup: data.classGroup || '',
+                    beltSystem: data.beltSystem || '',
+                    groupKey: App.Utils.examGroupKey(data.dojo || '', data.classGroup || '')
                 };
                 examData.trainerNames[userId] = userName;
 
@@ -1294,7 +1460,11 @@ App.Storage = (function () {
         upsertStudentDirectory: upsertStudentDirectory,
         syncStudentDirectoryForExam: syncStudentDirectoryForExam,
         resolveCurrentRank: resolveCurrentRank,
+        resolveExamOutcome: resolveExamOutcome,
         selfRegisterReturning: selfRegisterReturning,
+        findPreviousExamInGroup: findPreviousExamInGroup,
+        getGroupImportCandidates: getGroupImportCandidates,
+        importExamineesFromGroup: importExamineesFromGroup,
         exportExam: exportExam,
         importExam: importExam,
         exportExamineesToExcel: exportExamineesToExcel,

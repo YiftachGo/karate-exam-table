@@ -171,6 +171,34 @@ input:focus, select:focus, textarea:focus {
     color: var(--text-secondary);
 }
 
+/* "Show all belts" escape beside a belt-system-filtered rank dropdown.
+   Used on the examinee detail form and the student registration form. */
+.form-group label.rank-showall-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 400;
+    margin-top: 4px;
+    cursor: pointer;
+}
+
+.rank-showall-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    cursor: pointer;
+    font-weight: 400;
+}
+
+.rank-showall-label input {
+    width: auto;
+    margin: 0;
+}
+
 .form-row {
     display: flex;
     gap: 16px;

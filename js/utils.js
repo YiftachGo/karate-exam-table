@@ -72,8 +72,42 @@ App.Utils = (function () {
         return out;
     }
 
+    // The dojos. Single source of truth — previously duplicated verbatim in both
+    // invite-page.js and examinee-detail.js. `value` is what gets persisted;
+    // `display` adds the sensei names for the dropdown only.
+    var CLUBS = [
+        { value: 'הונבו דוג\'ו - נתניה', display: 'הונבו דוג\'ו - נתניה (סנסיי אריאל בן סימון, בועז היליג, מישל יוסבשוילי)' },
+        { value: 'דוג\'ו אבן יהודה', display: 'דוג\'ו אבן יהודה (סנסיי יואל שחר, יוסף אילוז)' },
+        { value: 'דוג\'ו באר שבע', display: 'דוג\'ו באר שבע (סנסיי יפתח גוברין)' },
+        { value: 'דוג\'ו עמק חפר', display: 'דוג\'ו עמק חפר (סנסיי עמוס דניאלי)' },
+        { value: 'דוג\'ו עתלית', display: 'דוג\'ו עתלית (סנסיי קאטי פרש)' },
+        { value: 'דוג\'ו פרדסיה', display: 'דוג\'ו פרדסיה (סנסיי אופיר הורביץ)' },
+        { value: 'דוג\'ו קרית השרון', display: 'דוג\'ו קרית השרון (סנסיי בועז הייליג)' },
+        { value: 'דוג\'ו תל אביב', display: 'דוג\'ו תל אביב (סנסיי יפתח גוברין)' }
+    ];
+
+    // Builds a dojo <select>. Shared by the exam form, the examinee detail form
+    // and the student registration form — each just passes its own element id.
+    function buildClubSelect(id, currentVal, labelText) {
+        var html = '<div class="form-group">';
+        if (labelText) html += '<label for="' + id + '">' + labelText + '</label>';
+        html += '<select id="' + id + '">';
+        html += '<option value=""></option>';
+        CLUBS.forEach(function (club) {
+            var selected = currentVal === club.value ? ' selected' : '';
+            html += '<option value="' + escapeHtml(club.value) + '"' + selected + '>' + escapeHtml(club.display) + '</option>';
+        });
+        html += '</select>';
+        html += '</div>';
+        return html;
+    }
+
+    // Each group is a separate belt ladder, not just a label. `key` is the stable
+    // identifier stored on an exam as `beltSystem` — never store the array index,
+    // which would break if these are ever reordered.
     var RANK_GROUPS = [
         {
+            key: 'adults',
             label: 'בוגרים (גיל 16 ומעלה)',
             ranks: [
                 'חגורה לבנה',
@@ -94,31 +128,103 @@ App.Utils = (function () {
             ]
         },
         {
+            key: 'kids10plus',
             label: 'ילדים מגיל 10 (פסים כחולים)',
             ranks: _expand(['לבנה', 'כתומה', 'אדומה', 'סגולה', 'כחולה', 'אפורה'], _blueStripes)
         },
         {
+            key: 'kidsUnder10',
             label: 'ילדים עד גיל 10 (פסים ירוקים)',
             ranks: _expand(['לבנה', 'לבנה-צהובה', 'צהובה-כתומה', 'כתומה-ירוקה'], _greenStripes)
         }
     ];
 
-    function buildRankSelect(id, currentVal, labelText) {
+    function _rankOptionsHtml(groups, currentVal) {
         var esc = escapeHtml;
-        var html = '<div class="form-group">';
-        if (labelText) html += '<label for="' + id + '">' + labelText + '</label>';
-        html += '<select id="' + id + '">';
-        html += '<option value=""></option>';
-        RANK_GROUPS.forEach(function (group) {
+        var html = '<option value=""></option>';
+        groups.forEach(function (group) {
             html += '<optgroup label="' + esc(group.label) + '">';
             group.ranks.forEach(function (rank) {
                 html += '<option value="' + esc(rank) + '"' + (currentVal === rank ? ' selected' : '') + '>' + esc(rank) + '</option>';
             });
             html += '</optgroup>';
         });
+        return html;
+    }
+
+    // Which groups to show for a belt system, always including the group that
+    // contains currentVal.
+    //
+    // That last part is the important bit: a student imported from another ladder
+    // (or one training outside their age bracket) must never have their existing
+    // belt disappear from the dropdown, because an absent option silently
+    // deselects and the next save would wipe their rank.
+    function _groupsForBeltSystem(beltSystem, currentVal) {
+        if (!beltSystem) return RANK_GROUPS;
+        var picked = RANK_GROUPS.filter(function (g) { return g.key === beltSystem; });
+        if (!picked.length) return RANK_GROUPS;
+        if (currentVal && picked[0].ranks.indexOf(currentVal) === -1) {
+            var holder = RANK_GROUPS.filter(function (g) {
+                return g.key !== beltSystem && g.ranks.indexOf(currentVal) !== -1;
+            });
+            if (holder.length) picked = picked.concat(holder);
+        }
+        return picked;
+    }
+
+    // All groups, with the exam's own ladder first. For dense contexts like the
+    // in-table awarded-rank dropdown, where hiding groups behind a per-cell
+    // checkbox would be clutter — nothing is removed, the relevant belts are
+    // just at the top.
+    function rankGroupsOrdered(beltSystem) {
+        if (!beltSystem) return RANK_GROUPS;
+        var first = RANK_GROUPS.filter(function (g) { return g.key === beltSystem; });
+        if (!first.length) return RANK_GROUPS;
+        return first.concat(RANK_GROUPS.filter(function (g) { return g.key !== beltSystem; }));
+    }
+
+    // opts.beltSystem — a RANK_GROUPS key; narrows the list to that ladder and
+    // renders a "show all belts" escape hatch beside the select.
+    function buildRankSelect(id, currentVal, labelText, opts) {
+        opts = opts || {};
+        var esc = escapeHtml;
+        var groups = _groupsForBeltSystem(opts.beltSystem, currentVal);
+        var isFiltered = groups.length < RANK_GROUPS.length;
+
+        var html = '<div class="form-group">';
+        if (labelText) html += '<label for="' + id + '">' + labelText + '</label>';
+        html += '<select id="' + id + '" data-belt-system="' + esc(opts.beltSystem || '') + '">';
+        html += _rankOptionsHtml(groups, currentVal);
         html += '</select>';
+        if (isFiltered) {
+            html += '<label class="rank-showall-label">';
+            html += '<input type="checkbox" class="rank-showall-cb" data-target="' + esc(id) + '"> ';
+            html += App.I18n.t('showAllRanks');
+            html += '</label>';
+        }
         html += '</div>';
         return html;
+    }
+
+    // Wires every "show all belts" checkbox on the page. Rebuilds the select's
+    // options in place and re-applies the previous selection, so toggling can
+    // never lose the value the user had chosen.
+    function bindRankShowAll(root) {
+        var scope = root || document;
+        scope.querySelectorAll('.rank-showall-cb').forEach(function (cb) {
+            if (cb.dataset.bound) return;
+            cb.dataset.bound = '1';
+            cb.addEventListener('change', function () {
+                var select = document.getElementById(cb.dataset.target);
+                if (!select) return;
+                var keep = select.value;
+                var groups = cb.checked
+                    ? RANK_GROUPS
+                    : _groupsForBeltSystem(select.dataset.beltSystem || '', keep);
+                select.innerHTML = _rankOptionsHtml(groups, keep);
+                select.value = keep;
+            });
+        });
     }
 
     function getEmptyGrades() {
@@ -280,6 +386,16 @@ App.Utils = (function () {
         return looseName(club);
     }
 
+    // Identity of a dojo+class group, used to find "the previous exam of this
+    // group". The class name is free text, so it is normalized — otherwise
+    // 'בוגרים' and 'בוגרים ' would look like two different classes.
+    // Returns '' when either half is missing: an untagged exam belongs to no group.
+    function examGroupKey(dojo, classGroup) {
+        var d = looseName(dojo || '');
+        var c = looseName(classGroup || '');
+        return (d && c) ? d + '|' + c : '';
+    }
+
     // Returns a CSS class name representing the belt color of the given rank.
     // Used to color-code examinee row headers in the exam table.
     // Order matters: check more-specific keywords first. For gradient ranks like
@@ -310,6 +426,11 @@ App.Utils = (function () {
         getEmptyGrades: getEmptyGrades,
         RANK_GROUPS: RANK_GROUPS,
         buildRankSelect: buildRankSelect,
+        bindRankShowAll: bindRankShowAll,
+        rankGroupsOrdered: rankGroupsOrdered,
+        CLUBS: CLUBS,
+        buildClubSelect: buildClubSelect,
+        examGroupKey: examGroupKey,
         renderGasshukuList: renderGasshukuList,
         readGasshukuList: readGasshukuList,
         renderLocationDateList: renderLocationDateList,

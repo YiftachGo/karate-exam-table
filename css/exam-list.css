@@ -71,6 +71,107 @@
     margin-right: 8px;
 }
 
+/* Dojo · class line on the exam card */
+.exam-card-group {
+    font-size: 0.8rem;
+    color: var(--primary);
+    font-weight: 600;
+    margin-bottom: 8px;
+    overflow-wrap: break-word;
+}
+
+/* === Import from the group's previous exam === */
+.import-source {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #888);
+    margin-bottom: 12px;
+}
+
+.import-list {
+    max-height: 55vh;
+    overflow-y: auto;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: var(--radius-sm, 6px);
+    margin-bottom: 12px;
+}
+
+.import-select-all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border, #e0e0e0);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card, #fff);
+    z-index: 1;
+}
+
+.import-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border, #f0f0f0);
+    cursor: pointer;
+    font-size: 0.88rem;
+    flex-wrap: wrap;
+}
+
+.import-row:last-child { border-bottom: none; }
+.import-row:hover { background: var(--bg, #fafafa); }
+.import-row-promoted { background: rgba(67, 160, 71, 0.07); }
+.import-row-promoted:hover { background: rgba(67, 160, 71, 0.13); }
+
+.import-name {
+    flex: 1;
+    min-width: 120px;
+    font-weight: 600;
+    color: var(--text, #212121);
+}
+
+.import-verdict {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+/* Stronger than a plain tint — the pass badge sits on an already green-tinted
+   promoted row and would otherwise disappear into it. */
+.verdict-pass { background: #c8e6c9; color: #1b5e20; }
+.verdict-fail { background: #ffebee; color: #c62828; }
+.verdict-none { background: #eceff1; color: var(--text-secondary, #888); }
+
+.import-rank {
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.import-rank-old {
+    color: var(--text-secondary, #888);
+    text-decoration: line-through;
+}
+
+/* Points from the old rank toward the new one. The markup carries a
+   left-pointing arrow for the RTL base layout; mirror it for LTR. */
+.import-rank-arrow {
+    color: #2e7d32;
+    font-weight: 700;
+    display: inline-block;
+}
+
+[dir="ltr"] .import-rank-arrow { transform: scaleX(-1); }
+.import-rank-new { color: #2e7d32; font-weight: 700; }
+.import-rank-same { color: var(--text-secondary, #aaa); }
+
 .exam-card-body {
     display: flex;
     justify-content: space-between;

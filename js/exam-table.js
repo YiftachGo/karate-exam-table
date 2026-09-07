@@ -484,7 +484,8 @@ App.ExamTable = (function () {
         html += '<label class="newrank-label">' + t('newRank') + '</label>';
         html += '<select class="newrank-select">';
         html += '<option value=""></option>';
-        App.Utils.RANK_GROUPS.forEach(function (group) {
+        // Exam's own belt ladder first; the others stay available below it.
+        App.Utils.rankGroupsOrdered(cachedExam && cachedExam.beltSystem).forEach(function (group) {
             html += '<optgroup label="' + App.Utils.escapeHtml(group.label) + '">';
             group.ranks.forEach(function (rank) {
                 html += '<option value="' + App.Utils.escapeHtml(rank) + '"' + (myNewRank === rank ? ' selected' : '') + '>' + App.Utils.escapeHtml(rank) + '</option>';
@@ -1533,7 +1534,7 @@ App.ExamTable = (function () {
 
         if (code) {
             // Ensure examInvitations doc is up to date (backward compat for pre-existing codes)
-            App.Storage.syncInvitationDoc(currentExamId, code, exam.name, exam.date)
+            App.Storage.syncInvitationDoc(currentExamId, code, exam.name, exam.date, exam.beltSystem)
                 .catch(function () {});
         }
 

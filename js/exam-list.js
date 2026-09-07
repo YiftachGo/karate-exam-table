@@ -3,6 +3,9 @@ var App = window.App || {};
 App.ExamList = (function () {
     var _searchTerm = '';
     var _sortKey = 'dateDesc';
+    // Last-loaded exam index. Feeds the class-name suggestions and lets the edit
+    // modal open with the exam's current values without a re-read.
+    var _exams = [];
 
     async function render() {
         var t = App.I18n.t;
@@ -10,6 +13,7 @@ App.ExamList = (function () {
         App.showLoading();
 
         var exams = await App.Storage.getExamIndex();
+        _exams = exams;
 
         var html = '<div class="exam-list-page">';
         html += '<div class="toolbar">';
@@ -28,9 +32,14 @@ App.ExamList = (function () {
         html += '</select>';
         html += '</div>';
 
-        // Filter and sort
+        // Filter and sort. Search matches the exam name plus its dojo and class,
+        // so "תל אביב" or "בוגרים" finds every exam of that group.
         var filtered = exams.filter(function (e) {
-            return !_searchTerm || (e.name || '').toLowerCase().indexOf(_searchTerm.toLowerCase()) !== -1;
+            if (!_searchTerm) return true;
+            var q = _searchTerm.toLowerCase();
+            return [e.name, e.dojo, e.classGroup].some(function (field) {
+                return (field || '').toLowerCase().indexOf(q) !== -1;
+            });
         });
         filtered.sort(function (a, b) {
             if (_sortKey === 'dateAsc')  return (a.date || '') < (b.date || '') ? -1 : 1;
@@ -53,10 +62,16 @@ App.ExamList = (function () {
                 html += '<div class="exam-card-header">';
                 html += '<h3>' + App.Utils.escapeHtml(exam.name) + '</h3>';
                 if (isOwner) {
-                    html += '<button class="btn btn-sm btn-outline rename-exam-btn" data-id="' + exam.id + '" data-name="' + App.Utils.escapeHtml(exam.name) + '" title="' + t('renameExam') + '">&#9998;</button>';
+                    html += '<button class="btn btn-sm btn-outline rename-exam-btn" data-id="' + exam.id + '" title="' + t('editExam') + '">&#9998;</button>';
                     html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
                 }
                 html += '</div>';
+                if (exam.dojo || exam.classGroup) {
+                    html += '<div class="exam-card-group">';
+                    html += App.Utils.escapeHtml(
+                        [exam.dojo, exam.classGroup].filter(Boolean).join(' · '));
+                    html += '</div>';
+                }
                 html += '<div class="exam-card-body">';
                 html += '<span class="exam-date">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
                 html += '<span class="exam-count">' + (exam.examineeCount || 0) + ' ' + t('examinees') + '</span>';
@@ -124,7 +139,7 @@ App.ExamList = (function () {
         document.querySelectorAll('.rename-exam-btn').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
-                showRenameExamModal(btn.dataset.id, btn.dataset.name);
+                showEditExamModal(btn.dataset.id);
             });
         });
 
@@ -161,6 +176,84 @@ App.ExamList = (function () {
         });
     }
 
+    // --- Dojo / class / belt-system fields, shared by the new and edit modals ---
+
+    // Distinct class names the trainer has used before, for the datalist.
+    function classSuggestions() {
+        var seen = {};
+        _exams.forEach(function (e) {
+            var c = (e.classGroup || '').trim();
+            if (c) seen[c] = true;
+        });
+        return Object.keys(seen).sort(function (a, b) { return a.localeCompare(b); });
+    }
+
+    function beltSystemSelect(id, currentVal) {
+        var t = App.I18n.t;
+        var html = '<div class="form-group">';
+        html += '<label for="' + id + '">' + t('beltSystem') + '</label>';
+        html += '<select id="' + id + '">';
+        html += '<option value="">' + t('allBeltSystems') + '</option>';
+        App.Utils.RANK_GROUPS.forEach(function (g) {
+            html += '<option value="' + g.key + '"' + (currentVal === g.key ? ' selected' : '') + '>' +
+                App.Utils.escapeHtml(g.label) + '</option>';
+        });
+        html += '</select>';
+        html += '<p class="field-explanation">' + t('beltSystemHelp') + '</p>';
+        html += '</div>';
+        return html;
+    }
+
+    // prefix keeps the two modals' element ids distinct.
+    function groupFieldsHtml(prefix, exam) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        exam = exam || {};
+        var listId = prefix + '-class-suggestions';
+
+        var html = App.Utils.buildClubSelect(prefix + '-dojo', exam.dojo || '', t('dojo'));
+
+        html += '<div class="form-group">';
+        html += '<label for="' + prefix + '-class">' + t('classGroup') + '</label>';
+        html += '<input type="text" id="' + prefix + '-class" list="' + listId + '"' +
+            ' placeholder="' + esc(t('classGroupPlaceholder')) + '"' +
+            ' value="' + esc(exam.classGroup || '') + '">';
+        html += '<datalist id="' + listId + '">';
+        classSuggestions().forEach(function (c) {
+            html += '<option value="' + esc(c) + '"></option>';
+        });
+        html += '</datalist>';
+        html += '</div>';
+
+        html += beltSystemSelect(prefix + '-belt', exam.beltSystem || '');
+        return html;
+    }
+
+    function readGroupFields(prefix) {
+        return {
+            dojo: document.getElementById(prefix + '-dojo').value,
+            classGroup: document.getElementById(prefix + '-class').value.trim(),
+            beltSystem: document.getElementById(prefix + '-belt').value
+        };
+    }
+
+    // When the dojo+class name an existing group, adopt that group's belt system
+    // so it only has to be chosen once per class.
+    function bindBeltSystemInherit(prefix) {
+        function sync() {
+            var g = readGroupFields(prefix);
+            var key = App.Utils.examGroupKey(g.dojo, g.classGroup);
+            if (!key) return;
+            var peer = _exams.filter(function (e) { return e.groupKey === key && e.beltSystem; })[0];
+            var beltEl = document.getElementById(prefix + '-belt');
+            // Never override a choice the trainer has already made by hand.
+            if (peer && !beltEl.value) beltEl.value = peer.beltSystem;
+        }
+        document.getElementById(prefix + '-dojo').addEventListener('change', sync);
+        document.getElementById(prefix + '-class').addEventListener('change', sync);
+        document.getElementById(prefix + '-class').addEventListener('blur', sync);
+    }
+
     function showNewExamModal() {
         var t = App.I18n.t;
         var modalContainer = document.getElementById('modal-container');
@@ -175,6 +268,7 @@ App.ExamList = (function () {
         html += '<label>' + t('examDate') + '</label>';
         html += '<input type="date" id="new-exam-date" value="' + new Date().toISOString().split('T')[0] + '">';
         html += '</div>';
+        html += groupFieldsHtml('new-exam', {});
         html += '<div class="modal-actions">';
         html += '<button class="btn btn-primary" id="btn-create-exam">' + t('create') + '</button>';
         html += '<button class="btn btn-outline" id="btn-cancel-exam">' + t('cancel') + '</button>';
@@ -182,6 +276,8 @@ App.ExamList = (function () {
         html += '</div>';
         html += '</div>';
         modalContainer.innerHTML = html;
+
+        bindBeltSystemInherit('new-exam');
 
         document.getElementById('btn-create-exam').addEventListener('click', createExam);
         document.getElementById('btn-cancel-exam').addEventListener('click', function () {
@@ -196,52 +292,219 @@ App.ExamList = (function () {
         document.getElementById('new-exam-name').focus();
     }
 
-    function showRenameExamModal(examId, currentName) {
+    // Was rename-only; now edits name, date and the group fields.
+    function showEditExamModal(examId) {
         var t = App.I18n.t;
+        var exam = _exams.filter(function (e) { return e.id === examId; })[0] || {};
         var modalContainer = document.getElementById('modal-container');
-        var html = '<div class="modal-overlay" id="rename-exam-overlay">';
+
+        var html = '<div class="modal-overlay" id="edit-exam-overlay">';
         html += '<div class="modal">';
-        html += '<h2>' + t('renameExam') + '</h2>';
+        html += '<h2>' + t('editExam') + '</h2>';
         html += '<div class="form-group">';
-        html += '<label>' + t('newExamName') + '</label>';
-        html += '<input type="text" id="rename-exam-input" value="' + App.Utils.escapeHtml(currentName || '') + '" autofocus>';
+        html += '<label>' + t('examName') + '</label>';
+        html += '<input type="text" id="edit-exam-name" value="' + App.Utils.escapeHtml(exam.name || '') + '" autofocus>';
         html += '</div>';
+        html += '<div class="form-group">';
+        html += '<label>' + t('examDate') + '</label>';
+        html += '<input type="date" id="edit-exam-date" value="' + App.Utils.escapeHtml(exam.date || '') + '">';
+        html += '</div>';
+        html += groupFieldsHtml('edit-exam', exam);
         html += '<div class="modal-actions">';
-        html += '<button class="btn btn-primary" id="btn-confirm-rename">' + t('save') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-cancel-rename">' + t('cancel') + '</button>';
+        html += '<button class="btn btn-primary" id="btn-confirm-edit">' + t('save') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-cancel-edit">' + t('cancel') + '</button>';
         html += '</div>';
         html += '</div></div>';
         modalContainer.innerHTML = html;
 
+        bindBeltSystemInherit('edit-exam');
+
         function close() { modalContainer.innerHTML = ''; }
         async function commit() {
-            var newName = document.getElementById('rename-exam-input').value.trim();
-            if (!newName) { document.getElementById('rename-exam-input').focus(); return; }
-            if (newName === currentName) { close(); return; }
-            await App.Storage.updateExam(examId, { name: newName });
-            close();
-            render();
-            App.showToast(t('dataSaved'));
+            var nameEl = document.getElementById('edit-exam-name');
+            var newName = nameEl.value.trim();
+            if (!newName) { nameEl.focus(); return; }
+            var g = readGroupFields('edit-exam');
+            try {
+                await App.Storage.updateExam(examId, {
+                    name: newName,
+                    date: document.getElementById('edit-exam-date').value,
+                    dojo: g.dojo,
+                    classGroup: g.classGroup,
+                    beltSystem: g.beltSystem,
+                    // Must be recomputed whenever dojo or class changes, or the
+                    // exam would stay in its old group.
+                    groupKey: App.Utils.examGroupKey(g.dojo, g.classGroup)
+                });
+                close();
+                render();
+                App.showToast(t('dataSaved'));
+            } catch (err) {
+                console.error('updateExam failed:', err);
+                alert(t('error') + ': ' + (err.message || err.code || err));
+            }
         }
 
-        document.getElementById('btn-confirm-rename').addEventListener('click', commit);
-        document.getElementById('btn-cancel-rename').addEventListener('click', close);
-        document.getElementById('rename-exam-overlay').addEventListener('click', function (e) { if (e.target === this) close(); });
-        document.getElementById('rename-exam-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(); });
-        var input = document.getElementById('rename-exam-input');
+        document.getElementById('btn-confirm-edit').addEventListener('click', commit);
+        document.getElementById('btn-cancel-edit').addEventListener('click', close);
+        document.getElementById('edit-exam-overlay').addEventListener('click', function (e) { if (e.target === this) close(); });
+        document.getElementById('edit-exam-name').addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(); });
+        var input = document.getElementById('edit-exam-name');
         input.focus();
         input.select();
     }
 
     async function createExam() {
-        var name = document.getElementById('new-exam-name').value.trim();
+        var t = App.I18n.t;
+        var nameEl = document.getElementById('new-exam-name');
+        var name = nameEl.value.trim();
         var date = document.getElementById('new-exam-date').value;
         if (!name) {
-            document.getElementById('new-exam-name').focus();
+            nameEl.focus();
             return;
         }
-        var exam = await App.Storage.createExam(name, date);
+        var g = readGroupFields('new-exam');
+        var btn = document.getElementById('btn-create-exam');
+        btn.disabled = true;
+
+        var exam;
+        try {
+            exam = await App.Storage.createExam(name, date, g);
+        } catch (err) {
+            btn.disabled = false;
+            console.error('createExam failed:', err);
+            alert(t('error') + ': ' + (err.message || err.code || err));
+            return;
+        }
+
+        // The exam now exists. Anything past this point must still end with the
+        // trainer inside it — never strand them on the list because the import
+        // lookup misbehaved.
+        try {
+            var previous = await App.Storage.findPreviousExamInGroup(exam.groupKey, exam.id);
+            if (previous) {
+                showImportReviewModal(exam, previous);
+                return;
+            }
+        } catch (err) {
+            console.warn('previous-exam lookup failed:', err);
+        }
         App.Router.navigate('#/exam/' + exam.id);
+    }
+
+    // --- Import from the group's previous exam ---
+
+    function showImportReviewModal(exam, previous) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var modalContainer = document.getElementById('modal-container');
+
+        function go() { App.Router.navigate('#/exam/' + exam.id); }
+
+        modalContainer.innerHTML = '<div class="modal-overlay" id="import-overlay"><div class="modal">' +
+            '<h2>' + t('importReviewTitle') + '</h2>' +
+            '<p class="invite-subtitle">' + t('loading') + '</p></div></div>';
+
+        App.Storage.getGroupImportCandidates(previous.id).then(function (candidates) {
+            if (!candidates.length) {
+                modalContainer.innerHTML = '';
+                go();
+                return;
+            }
+
+            var html = '<div class="modal-overlay" id="import-overlay"><div class="modal modal-wide">';
+            html += '<h2>' + t('importReviewTitle') + '</h2>';
+            html += '<p class="invite-subtitle">' + t('importReviewSubtitle') + '</p>';
+            html += '<p class="import-source">' + t('previousExamLabel') + ': ' +
+                esc(previous.name || '') + (previous.date ? ' — ' + App.Utils.formatDate(previous.date) : '') + '</p>';
+
+            html += '<div class="import-list">';
+            html += '<label class="import-select-all"><input type="checkbox" id="import-select-all" checked> ' +
+                t('selectAll') + '</label>';
+            candidates.forEach(function (c, i) {
+                var verdictClass = c.verdict === 'pass' ? 'verdict-pass'
+                    : c.verdict === 'fail' ? 'verdict-fail' : 'verdict-none';
+                var verdictLabel = c.verdict === 'pass' ? t('passedLastExam')
+                    : c.verdict === 'fail' ? t('failedLastExam') : t('notGraded');
+
+                html += '<label class="import-row' + (c.promoted ? ' import-row-promoted' : '') + '">';
+                html += '<input type="checkbox" class="import-cb" data-idx="' + i + '" checked>';
+                html += '<span class="import-name">' + esc(c.firstName + ' ' + c.lastName) + '</span>';
+                html += '<span class="import-verdict ' + verdictClass + '">' + verdictLabel + '</span>';
+                html += '<span class="import-rank">';
+                if (c.promoted) {
+                    html += '<span class="import-rank-old">' + esc(c.oldRank || '—') + '</span>';
+                    // Left-pointing for the RTL base layout, where the old rank
+                    // sits to the right. CSS flips it under [dir="ltr"].
+                    html += '<span class="import-rank-arrow">&larr;</span>';
+                    html += '<span class="import-rank-new">' + esc(c.newRank || '—') + '</span>';
+                } else {
+                    html += esc(c.newRank || c.oldRank || '—');
+                    html += ' <span class="import-rank-same">(' + t('rankUnchanged') + ')</span>';
+                }
+                html += '</span>';
+                html += '</label>';
+            });
+            html += '</div>';
+
+            html += '<div id="import-error" class="auth-error" style="display:none"></div>';
+            html += '<div class="modal-actions">';
+            html += '<button class="btn btn-primary" id="btn-do-import">' + t('importSelected') + '</button>';
+            html += '<button class="btn btn-outline" id="btn-skip-import">' + t('skipImport') + '</button>';
+            html += '</div></div></div>';
+            modalContainer.innerHTML = html;
+
+            document.getElementById('import-select-all').addEventListener('change', function () {
+                var on = this.checked;
+                document.querySelectorAll('.import-cb').forEach(function (cb) { cb.checked = on; });
+            });
+
+            // Skipping still leaves the exam created — just empty.
+            document.getElementById('btn-skip-import').addEventListener('click', function () {
+                modalContainer.innerHTML = '';
+                go();
+            });
+            document.getElementById('import-overlay').addEventListener('click', function (e) {
+                if (e.target === this) { modalContainer.innerHTML = ''; go(); }
+            });
+
+            document.getElementById('btn-do-import').addEventListener('click', async function () {
+                var btn = this;
+                var errorEl = document.getElementById('import-error');
+                errorEl.style.display = 'none';
+
+                var items = Array.from(document.querySelectorAll('.import-cb:checked'))
+                    .map(function (cb) {
+                        var c = candidates[parseInt(cb.dataset.idx, 10)];
+                        return {
+                            examineeId: c.examineeId,
+                            rank: c.newRank,
+                            targetRank: c.newTargetRank
+                        };
+                    });
+
+                if (!items.length) { modalContainer.innerHTML = ''; go(); return; }
+
+                btn.disabled = true;
+                btn.textContent = t('loading');
+                try {
+                    var n = await App.Storage.importExamineesFromGroup(previous.id, exam.id, items);
+                    modalContainer.innerHTML = '';
+                    App.showToast(n + ' ' + t('studentsImportedCount'));
+                    go();
+                } catch (err) {
+                    console.error('group import failed:', err);
+                    btn.disabled = false;
+                    btn.textContent = t('importSelected');
+                    errorEl.textContent = t('error') + ': ' + (err.message || err.code || err);
+                    errorEl.style.display = '';
+                }
+            });
+        }).catch(function (err) {
+            console.warn('import candidates failed:', err);
+            modalContainer.innerHTML = '';
+            go();
+        });
     }
 
     return { render: render };
