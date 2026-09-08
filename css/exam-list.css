@@ -80,6 +80,33 @@
     overflow-wrap: break-word;
 }
 
+/* Belt-system checkboxes on the new/edit exam form */
+.belt-system-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg, #fafafa);
+}
+
+.belt-system-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text, #212121);
+    cursor: pointer;
+}
+
+.belt-system-check input {
+    width: auto;
+    margin: 0;
+    flex-shrink: 0;
+}
+
 /* === Import from the group's previous exam === */
 .import-source {
     font-size: 0.85rem;

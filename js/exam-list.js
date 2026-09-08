@@ -188,20 +188,31 @@ App.ExamList = (function () {
         return Object.keys(seen).sort(function (a, b) { return a.localeCompare(b); });
     }
 
-    function beltSystemSelect(id, currentVal) {
+    // Checkboxes, not a dropdown — a class can span more than one belt ladder
+    // (mixed-age groups, a teen training on the adult ladder). Checking none
+    // means no filtering at all, which is why the hint says so explicitly.
+    function beltSystemChecks(prefix, currentVals) {
         var t = App.I18n.t;
+        var selected = App.Utils.toBeltSystems(currentVals);
         var html = '<div class="form-group">';
-        html += '<label for="' + id + '">' + t('beltSystem') + '</label>';
-        html += '<select id="' + id + '">';
-        html += '<option value="">' + t('allBeltSystems') + '</option>';
+        html += '<label>' + t('beltSystem') + '</label>';
+        html += '<div class="belt-system-checks">';
         App.Utils.RANK_GROUPS.forEach(function (g) {
-            html += '<option value="' + g.key + '"' + (currentVal === g.key ? ' selected' : '') + '>' +
-                App.Utils.escapeHtml(g.label) + '</option>';
+            html += '<label class="belt-system-check">';
+            html += '<input type="checkbox" class="' + prefix + '-belt-cb" value="' + g.key + '"' +
+                (selected.indexOf(g.key) !== -1 ? ' checked' : '') + '>';
+            html += '<span>' + App.Utils.escapeHtml(g.label) + '</span>';
+            html += '</label>';
         });
-        html += '</select>';
+        html += '</div>';
         html += '<p class="field-explanation">' + t('beltSystemHelp') + '</p>';
         html += '</div>';
         return html;
+    }
+
+    function readBeltSystems(prefix) {
+        return Array.from(document.querySelectorAll('.' + prefix + '-belt-cb:checked'))
+            .map(function (cb) { return cb.value; });
     }
 
     // prefix keeps the two modals' element ids distinct.
@@ -225,7 +236,7 @@ App.ExamList = (function () {
         html += '</datalist>';
         html += '</div>';
 
-        html += beltSystemSelect(prefix + '-belt', exam.beltSystem || '');
+        html += beltSystemChecks(prefix, exam.beltSystems);
         return html;
     }
 
@@ -233,21 +244,27 @@ App.ExamList = (function () {
         return {
             dojo: document.getElementById(prefix + '-dojo').value,
             classGroup: document.getElementById(prefix + '-class').value.trim(),
-            beltSystem: document.getElementById(prefix + '-belt').value
+            beltSystems: readBeltSystems(prefix)
         };
     }
 
-    // When the dojo+class name an existing group, adopt that group's belt system
-    // so it only has to be chosen once per class.
+    // When the dojo+class name an existing group, adopt that group's belt systems
+    // so they only have to be chosen once per class.
     function bindBeltSystemInherit(prefix) {
         function sync() {
             var g = readGroupFields(prefix);
             var key = App.Utils.examGroupKey(g.dojo, g.classGroup);
             if (!key) return;
-            var peer = _exams.filter(function (e) { return e.groupKey === key && e.beltSystem; })[0];
-            var beltEl = document.getElementById(prefix + '-belt');
-            // Never override a choice the trainer has already made by hand.
-            if (peer && !beltEl.value) beltEl.value = peer.beltSystem;
+            // Never override choices the trainer has already ticked by hand.
+            if (g.beltSystems.length) return;
+            var peer = _exams.filter(function (e) {
+                return e.groupKey === key && App.Utils.toBeltSystems(e.beltSystems).length;
+            })[0];
+            if (!peer) return;
+            var inherit = App.Utils.toBeltSystems(peer.beltSystems);
+            document.querySelectorAll('.' + prefix + '-belt-cb').forEach(function (cb) {
+                if (inherit.indexOf(cb.value) !== -1) cb.checked = true;
+            });
         }
         document.getElementById(prefix + '-dojo').addEventListener('change', sync);
         document.getElementById(prefix + '-class').addEventListener('change', sync);
@@ -331,7 +348,7 @@ App.ExamList = (function () {
                     date: document.getElementById('edit-exam-date').value,
                     dojo: g.dojo,
                     classGroup: g.classGroup,
-                    beltSystem: g.beltSystem,
+                    beltSystems: g.beltSystems,
                     // Must be recomputed whenever dojo or class changes, or the
                     // exam would stay in its old group.
                     groupKey: App.Utils.examGroupKey(g.dojo, g.classGroup)

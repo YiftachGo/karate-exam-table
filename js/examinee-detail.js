@@ -54,9 +54,9 @@ App.ExamineeDetail = (function () {
         html += '</div>';
         html += '</div>';
 
-        // The exam's belt system narrows both rank dropdowns to that ladder, with
-        // a "show all belts" escape rendered alongside.
-        var beltOpts = { beltSystem: exam.beltSystem || '' };
+        // The exam's belt systems narrow both rank dropdowns to those ladders,
+        // with a "show all belts" escape rendered alongside.
+        var beltOpts = { beltSystems: App.Utils.toBeltSystems(exam.beltSystems || exam.beltSystem) };
         html += App.Utils.buildRankSelect('field-rank', ex.rank, t('rank'), beltOpts);
         html += App.Utils.buildRankSelect('field-targetRank', ex.targetRank, t('targetRank'), beltOpts);
         html += clubSelectGroup(t('club'), ex.club || '');

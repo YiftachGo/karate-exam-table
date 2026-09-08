@@ -136,7 +136,7 @@ App.InvitePage = (function () {
         // which case all belts are shown — the safe default, since a filtered list
         // that omitted the student's current belt would deselect it.
         html += App.Utils.buildRankSelect('reg-rank', prefill.rank || '', t('rank') + ' *', {
-            beltSystem: (verifiedExam && verifiedExam.beltSystem) || ''
+            beltSystems: (verifiedExam && verifiedExam.beltSystems) || []
         });
         html += '</div>';
 

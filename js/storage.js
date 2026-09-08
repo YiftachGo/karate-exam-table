@@ -43,7 +43,9 @@ App.Storage = (function () {
                     dojo: d.dojo || '',
                     classGroup: d.classGroup || '',
                     groupKey: d.groupKey || '',
-                    beltSystem: d.beltSystem || ''
+                    // Coerces the legacy single-string beltSystem written before
+                    // several systems could be selected.
+                    beltSystems: App.Utils.toBeltSystems(d.beltSystems || d.beltSystem)
                 };
             }));
             // Sort client-side (avoids needing composite index)
@@ -89,15 +91,18 @@ App.Storage = (function () {
         return exam;
     }
 
-    // opts: { dojo, classGroup, beltSystem } — all optional. An exam with no dojo
+    // opts: { dojo, classGroup, beltSystems } — all optional. An exam with no dojo
     // and class belongs to no group, gets an empty groupKey, and behaves exactly
-    // as exams did before grouping existed.
+    // as exams did before grouping existed. An empty beltSystems means no belt
+    // filtering, i.e. every ladder is offered.
     async function createExam(name, date, opts) {
         opts = opts || {};
         var userId = App.Auth.getUserId();
         var userName = App.Auth.getUserName();
         var dojo = opts.dojo || '';
         var classGroup = (opts.classGroup || '').trim();
+        var beltSystems = App.Utils.toBeltSystems(opts.beltSystems);
+        var groupKey = App.Utils.examGroupKey(dojo, classGroup);
         var docRef = await App.db.collection('exams').add({
             name: name,
             date: date,
@@ -110,8 +115,8 @@ App.Storage = (function () {
             examineeCount: 0,
             dojo: dojo,
             classGroup: classGroup,
-            beltSystem: opts.beltSystem || '',
-            groupKey: App.Utils.examGroupKey(dojo, classGroup)
+            beltSystems: beltSystems,
+            groupKey: groupKey
         });
         // Store trainer name mapping
         var nameUpdate = {};
@@ -120,8 +125,8 @@ App.Storage = (function () {
         return {
             id: docRef.id, name: name, date: date,
             dojo: dojo, classGroup: classGroup,
-            beltSystem: opts.beltSystem || '',
-            groupKey: App.Utils.examGroupKey(dojo, classGroup)
+            beltSystems: beltSystems,
+            groupKey: groupKey
         };
     }
 
@@ -437,26 +442,26 @@ App.Storage = (function () {
         var examDoc = await examRef.get();
         var exam = examDoc.data();
         await examRef.update({ invitationCode: code });
-        // Write public invitation doc — only code/name/date/beltSystem, not the
-        // full exam. beltSystem is a belt-ladder name (no PII) and lets the
-        // registration form show the right belts.
+        // Write public invitation doc — only code/name/date/beltSystems, not the
+        // full exam. Belt-ladder names carry no PII and let the registration form
+        // show the right belts.
         await App.db.collection('examInvitations').doc(examId).set({
             code: code,
             name: exam.name || '',
             date: exam.date || '',
-            beltSystem: exam.beltSystem || ''
+            beltSystems: App.Utils.toBeltSystems(exam.beltSystems || exam.beltSystem)
         });
         return code;
     }
 
     // Syncs the public examInvitations doc — called when trainer opens the invite modal
     // to ensure backward-compatible exams (created before examInvitations existed) still work
-    async function syncInvitationDoc(examId, code, name, date, beltSystem) {
+    async function syncInvitationDoc(examId, code, name, date, beltSystems) {
         await App.db.collection('examInvitations').doc(examId).set({
             code: code,
             name: name || '',
             date: date || '',
-            beltSystem: beltSystem || ''
+            beltSystems: App.Utils.toBeltSystems(beltSystems)
         });
     }
 
@@ -466,7 +471,10 @@ App.Storage = (function () {
         if (!doc.exists) return null;
         var inv = doc.data();
         if (inv.code && inv.code === code.toUpperCase()) {
-            return { id: examId, name: inv.name, date: inv.date, beltSystem: inv.beltSystem || '' };
+            return {
+                id: examId, name: inv.name, date: inv.date,
+                beltSystems: App.Utils.toBeltSystems(inv.beltSystems || inv.beltSystem)
+            };
         }
         return null;
     }
@@ -872,7 +880,7 @@ App.Storage = (function () {
                 trainingStartDate: ex.trainingStartDate || '',
                 lastExamDate: ex.lastExamDate || '',
                 trainingsPerWeek: ex.trainingsPerWeek || '',
-                beltTrainings: ex.beltTrainings || '',
+                beltTrainings: Array.isArray(ex.beltTrainings) ? ex.beltTrainings : [],
                 gasshukus: Array.isArray(ex.gasshukus) ? ex.gasshukus : [],
                 examPayment: ex.examPayment || '',
                 photoUrl: ex.photoUrl || '',
@@ -1064,7 +1072,7 @@ App.Storage = (function () {
                     examineeCount: 0,
                     dojo: data.dojo || '',
                     classGroup: data.classGroup || '',
-                    beltSystem: data.beltSystem || '',
+                    beltSystems: App.Utils.toBeltSystems(data.beltSystems || data.beltSystem),
                     groupKey: App.Utils.examGroupKey(data.dojo || '', data.classGroup || '')
                 };
                 examData.trainerNames[userId] = userName;

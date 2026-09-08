@@ -103,7 +103,7 @@ App.Utils = (function () {
     }
 
     // Each group is a separate belt ladder, not just a label. `key` is the stable
-    // identifier stored on an exam as `beltSystem` — never store the array index,
+    // identifier stored on an exam in `beltSystems` — never store the array index,
     // which would break if these are ever reordered.
     var RANK_GROUPS = [
         {
@@ -152,48 +152,65 @@ App.Utils = (function () {
         return html;
     }
 
-    // Which groups to show for a belt system, always including the group that
-    // contains currentVal.
+    // An exam can name several belt systems, so this is always a list. Accepts
+    // the current array form, the single-string form written by exams created
+    // before multi-select, or nothing at all — an empty list means "no filter,
+    // show every belt".
+    function toBeltSystems(value) {
+        if (Array.isArray(value)) {
+            return value.filter(function (k) { return !!k; });
+        }
+        if (typeof value === 'string' && value) return [value];
+        return [];
+    }
+
+    // Which groups to show for the given belt systems, always including the group
+    // that contains currentVal.
     //
-    // That last part is the important bit: a student imported from another ladder
-    // (or one training outside their age bracket) must never have their existing
-    // belt disappear from the dropdown, because an absent option silently
-    // deselects and the next save would wipe their rank.
-    function _groupsForBeltSystem(beltSystem, currentVal) {
-        if (!beltSystem) return RANK_GROUPS;
-        var picked = RANK_GROUPS.filter(function (g) { return g.key === beltSystem; });
+    // That last part is the important bit: a student on a ladder the exam did not
+    // select (imported from another group, or training outside their age bracket)
+    // must never have their existing belt disappear from the dropdown, because an
+    // absent option silently deselects and the next save would wipe their rank.
+    function _groupsForBeltSystems(beltSystems, currentVal) {
+        var keys = toBeltSystems(beltSystems);
+        if (!keys.length) return RANK_GROUPS;
+        var picked = RANK_GROUPS.filter(function (g) { return keys.indexOf(g.key) !== -1; });
         if (!picked.length) return RANK_GROUPS;
-        if (currentVal && picked[0].ranks.indexOf(currentVal) === -1) {
+        var covered = picked.some(function (g) { return g.ranks.indexOf(currentVal) !== -1; });
+        if (currentVal && !covered) {
             var holder = RANK_GROUPS.filter(function (g) {
-                return g.key !== beltSystem && g.ranks.indexOf(currentVal) !== -1;
+                return keys.indexOf(g.key) === -1 && g.ranks.indexOf(currentVal) !== -1;
             });
             if (holder.length) picked = picked.concat(holder);
         }
         return picked;
     }
 
-    // All groups, with the exam's own ladder first. For dense contexts like the
+    // All groups, with the exam's own ladders first. For dense contexts like the
     // in-table awarded-rank dropdown, where hiding groups behind a per-cell
     // checkbox would be clutter — nothing is removed, the relevant belts are
     // just at the top.
-    function rankGroupsOrdered(beltSystem) {
-        if (!beltSystem) return RANK_GROUPS;
-        var first = RANK_GROUPS.filter(function (g) { return g.key === beltSystem; });
+    function rankGroupsOrdered(beltSystems) {
+        var keys = toBeltSystems(beltSystems);
+        if (!keys.length) return RANK_GROUPS;
+        var first = RANK_GROUPS.filter(function (g) { return keys.indexOf(g.key) !== -1; });
         if (!first.length) return RANK_GROUPS;
-        return first.concat(RANK_GROUPS.filter(function (g) { return g.key !== beltSystem; }));
+        return first.concat(RANK_GROUPS.filter(function (g) { return keys.indexOf(g.key) === -1; }));
     }
 
-    // opts.beltSystem — a RANK_GROUPS key; narrows the list to that ladder and
-    // renders a "show all belts" escape hatch beside the select.
+    // opts.beltSystems — RANK_GROUPS keys (array, or a legacy single string);
+    // narrows the list to those ladders and renders a "show all belts" escape
+    // hatch beside the select.
     function buildRankSelect(id, currentVal, labelText, opts) {
         opts = opts || {};
         var esc = escapeHtml;
-        var groups = _groupsForBeltSystem(opts.beltSystem, currentVal);
+        var keys = toBeltSystems(opts.beltSystems !== undefined ? opts.beltSystems : opts.beltSystem);
+        var groups = _groupsForBeltSystems(keys, currentVal);
         var isFiltered = groups.length < RANK_GROUPS.length;
 
         var html = '<div class="form-group">';
         if (labelText) html += '<label for="' + id + '">' + labelText + '</label>';
-        html += '<select id="' + id + '" data-belt-system="' + esc(opts.beltSystem || '') + '">';
+        html += '<select id="' + id + '" data-belt-systems="' + esc(keys.join(',')) + '">';
         html += _rankOptionsHtml(groups, currentVal);
         html += '</select>';
         if (isFiltered) {
@@ -218,9 +235,8 @@ App.Utils = (function () {
                 var select = document.getElementById(cb.dataset.target);
                 if (!select) return;
                 var keep = select.value;
-                var groups = cb.checked
-                    ? RANK_GROUPS
-                    : _groupsForBeltSystem(select.dataset.beltSystem || '', keep);
+                var stored = (select.dataset.beltSystems || '').split(',').filter(Boolean);
+                var groups = cb.checked ? RANK_GROUPS : _groupsForBeltSystems(stored, keep);
                 select.innerHTML = _rankOptionsHtml(groups, keep);
                 select.value = keep;
             });
@@ -428,6 +444,7 @@ App.Utils = (function () {
         buildRankSelect: buildRankSelect,
         bindRankShowAll: bindRankShowAll,
         rankGroupsOrdered: rankGroupsOrdered,
+        toBeltSystems: toBeltSystems,
         CLUBS: CLUBS,
         buildClubSelect: buildClubSelect,
         examGroupKey: examGroupKey,
