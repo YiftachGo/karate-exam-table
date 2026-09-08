@@ -49,6 +49,33 @@
         justify-content: center;
     }
 
+    /* The toolbar stacks at this width, so the exam-list controls stretch with
+       it — the search box's fixed 180px would otherwise sit oddly narrow. */
+    .exam-list-page .exam-search-input {
+        width: auto;
+    }
+
+    .exam-list-page .view-toggle {
+        align-self: stretch;
+    }
+
+    .exam-list-page .view-toggle-seg {
+        flex: 1;
+        justify-content: center;
+    }
+
+    /* A row has nowhere to go on a narrow screen — let it wrap into a stack
+       rather than squeezing the name to nothing. */
+    .exam-list-rows .exam-card {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .exam-list-rows .exam-card-body {
+        justify-content: space-between;
+    }
+
     .form-row {
         flex-direction: column;
         gap: 0;

@@ -7,19 +7,59 @@ App.ExamList = (function () {
     // modal open with the exam's current values without a re-read.
     var _exams = [];
 
-    async function render() {
+    // --- View state (per device, so cards on a desktop and a list on a phone) ---
+    //
+    // Deliberately its own localStorage keys rather than folded into krt_settings:
+    // app.js's language toggle calls saveSettings({ language }), which replaces the
+    // whole object and would wipe any sibling key on every language switch.
+
+    var VIEW_KEY = 'krt_examview';
+    var COLLAPSE_KEY = 'krt_foldercollapse';
+
+    function getView() {
+        try {
+            return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards';
+        } catch (e) { return 'cards'; }
+    }
+    function setView(v) {
+        try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+    }
+    function getCollapsed() {
+        try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}'); }
+        catch (e) { return {}; }
+    }
+    function setCollapsed(map) {
+        try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(map)); } catch (e) {}
+    }
+    function toggleCollapsed(folderId) {
+        var map = getCollapsed();
+        if (map[folderId]) delete map[folderId];
+        else map[folderId] = true;
+        setCollapsed(map);
+    }
+
+    // opts.useCache re-renders from the exams already in memory. Search, sort, the
+    // view toggle, collapsing and filing all change presentation only, so they
+    // must not trigger a Firestore round-trip or flash the spinner. The default
+    // stays "fetch" because the router calls render() with no arguments.
+    async function render(opts) {
         var t = App.I18n.t;
         var container = document.getElementById('app');
-        App.showLoading();
+        var useCache = !!(opts && opts.useCache) && _exams.length > 0;
 
-        var exams = await App.Storage.getExamIndex();
-        _exams = exams;
+        if (!useCache) {
+            App.showLoading();
+            _exams = await App.Storage.getExamIndex();
+        }
+        var exams = _exams;
+        var view = getView();
 
         var html = '<div class="exam-list-page">';
         html += '<div class="toolbar">';
         html += '<h2 class="page-title">' + t('appTitle') + '</h2>';
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-new-exam">+ ' + t('newExam') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-new-folder">+ ' + t('newFolder') + '</button>';
         html += '<button class="btn btn-outline" id="btn-import-exam">' + t('importExam') + '</button>';
         html += '<input type="file" id="import-file" accept=".json" style="display:none">';
         html += '<input type="search" id="exam-search" class="exam-search-input" placeholder="' + t('searchExam') + '" value="' + App.Utils.escapeHtml(_searchTerm) + '">';
@@ -29,25 +69,16 @@ App.ExamList = (function () {
         html += '<option value="nameAsc"'  + (_sortKey === 'nameAsc'  ? ' selected' : '') + '>' + t('sortNameAZ') + '</option>';
         html += '<option value="nameDesc"' + (_sortKey === 'nameDesc' ? ' selected' : '') + '>' + t('sortNameZA') + '</option>';
         html += '<option value="count"'    + (_sortKey === 'count'    ? ' selected' : '') + '>' + t('sortCount')  + '</option>';
+        html += '<option value="dojoAsc"'  + (_sortKey === 'dojoAsc'  ? ' selected' : '') + '>' + t('sortDojo')   + '</option>';
         html += '</select>';
+        // Two-segment view switch, same shape as the draft toggle in the exam table
+        html += '<div class="view-toggle">';
+        html += '<button class="view-toggle-seg' + (view === 'cards' ? ' active' : '') + '" data-view="cards">&#9638; ' + t('viewCards') + '</button>';
+        html += '<button class="view-toggle-seg' + (view === 'list' ? ' active' : '') + '" data-view="list">&#9776; ' + t('viewList') + '</button>';
+        html += '</div>';
         html += '</div>';
 
-        // Filter and sort. Search matches the exam name plus its dojo and class,
-        // so "תל אביב" or "בוגרים" finds every exam of that group.
-        var filtered = exams.filter(function (e) {
-            if (!_searchTerm) return true;
-            var q = _searchTerm.toLowerCase();
-            return [e.name, e.dojo, e.classGroup].some(function (field) {
-                return (field || '').toLowerCase().indexOf(q) !== -1;
-            });
-        });
-        filtered.sort(function (a, b) {
-            if (_sortKey === 'dateAsc')  return (a.date || '') < (b.date || '') ? -1 : 1;
-            if (_sortKey === 'nameAsc')  return (a.name || '').localeCompare(b.name || '');
-            if (_sortKey === 'nameDesc') return (b.name || '').localeCompare(a.name || '');
-            if (_sortKey === 'count')    return (b.examineeCount || 0) - (a.examineeCount || 0);
-            return (b.date || '') > (a.date || '') ? 1 : -1; // dateDesc
-        });
+        var filtered = filterAndSort(exams);
 
         if (filtered.length === 0) {
             html += '<div class="empty-state">';
@@ -55,33 +86,7 @@ App.ExamList = (function () {
             html += '<p>' + t('noExams') + '</p>';
             html += '</div>';
         } else {
-            html += '<div class="exam-grid">';
-            filtered.forEach(function (exam) {
-                var isOwner = exam.ownerId === App.Auth.getUserId();
-                html += '<div class="exam-card" data-id="' + exam.id + '">';
-                html += '<div class="exam-card-header">';
-                html += '<h3>' + App.Utils.escapeHtml(exam.name) + '</h3>';
-                if (isOwner) {
-                    html += '<button class="btn btn-sm btn-outline rename-exam-btn" data-id="' + exam.id + '" title="' + t('editExam') + '">&#9998;</button>';
-                    html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
-                }
-                html += '</div>';
-                if (exam.dojo || exam.classGroup) {
-                    html += '<div class="exam-card-group">';
-                    html += App.Utils.escapeHtml(
-                        [exam.dojo, exam.classGroup].filter(Boolean).join(' · '));
-                    html += '</div>';
-                }
-                html += '<div class="exam-card-body">';
-                html += '<span class="exam-date">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
-                html += '<span class="exam-count">' + (exam.examineeCount || 0) + ' ' + t('examinees') + '</span>';
-                html += '</div>';
-                html += '<div class="exam-card-actions">';
-                html += '<button class="btn btn-sm btn-outline export-exam-btn" data-id="' + exam.id + '">' + t('export') + '</button>';
-                html += '</div>';
-                html += '</div>';
-            });
-            html += '</div>';
+            html += renderSections(filtered, view);
         }
 
         html += '</div>';
@@ -97,19 +102,180 @@ App.ExamList = (function () {
         }
     }
 
+    // Search matches the exam name plus its dojo and class, so "תל אביב" or
+    // "בוגרים" finds every exam of that group.
+    function filterAndSort(exams) {
+        var filtered = exams.filter(function (e) {
+            if (!_searchTerm) return true;
+            var q = _searchTerm.toLowerCase();
+            return [e.name, e.dojo, e.classGroup].some(function (field) {
+                return (field || '').toLowerCase().indexOf(q) !== -1;
+            });
+        });
+        filtered.sort(function (a, b) {
+            if (_sortKey === 'dateAsc')  return (a.date || '') < (b.date || '') ? -1 : 1;
+            if (_sortKey === 'nameAsc')  return (a.name || '').localeCompare(b.name || '');
+            if (_sortKey === 'nameDesc') return (b.name || '').localeCompare(a.name || '');
+            if (_sortKey === 'count')    return (b.examineeCount || 0) - (a.examineeCount || 0);
+            if (_sortKey === 'dojoAsc') {
+                // ￿ sorts an untagged exam last instead of leading with a blank.
+                var ad = a.dojo || '￿', bd = b.dojo || '￿';
+                return ad.localeCompare(bd, 'he')
+                    || (a.classGroup || '').localeCompare(b.classGroup || '', 'he')
+                    || (b.date || '').localeCompare(a.date || '');
+            }
+            return (b.date || '') > (a.date || '') ? 1 : -1; // dateDesc
+        });
+        return filtered;
+    }
+
+    // --- Folder sections ---
+
+    // With no folders the list renders exactly as it always did — a trainer who
+    // never makes one sees no headings and no empty Unfiled section.
+    function renderSections(exams, view) {
+        var t = App.I18n.t;
+        var folders = App.UserPrefs.getFolders();
+        if (!folders.length) return renderExamContainer(exams, view);
+
+        var assign = App.UserPrefs.getFolderAssignments();
+        var collapsed = getCollapsed();
+        var byFolder = {};
+        var unfiled = [];
+        folders.forEach(function (f) { byFolder[f.id] = []; });
+        exams.forEach(function (e) {
+            var fid = assign[e.id];
+            if (fid && byFolder[fid]) byFolder[fid].push(e);
+            else unfiled.push(e);
+        });
+
+        var html = '';
+        folders.forEach(function (f) {
+            html += renderFolderSection(f, byFolder[f.id], view, !!collapsed[f.id], true);
+        });
+        // Unfiled is always present so there is somewhere to drag exams back to.
+        html += renderFolderSection(
+            { id: '', name: t('unfiled') }, unfiled, view, !!collapsed['__unfiled'], false);
+        return html;
+    }
+
+    function renderFolderSection(folder, exams, view, isCollapsed, canEdit) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var dropId = folder.id || '';
+
+        var html = '<div class="exam-folder' + (isCollapsed ? ' collapsed' : '') +
+            '" data-folder-id="' + esc(dropId) + '" data-folder-key="' +
+            esc(folder.id || '__unfiled') + '">';
+        html += '<div class="exam-folder-header">';
+        html += '<button type="button" class="exam-folder-toggle" data-folder-key="' +
+            esc(folder.id || '__unfiled') + '">';
+        html += '<span class="exam-folder-chevron">' + (isCollapsed ? '&#9656;' : '&#9662;') + '</span>';
+        html += '<span class="exam-folder-name">' + esc(folder.name || '') + '</span>';
+        html += '<span class="exam-folder-count">' + exams.length + '</span>';
+        html += '</button>';
+        if (canEdit) {
+            html += '<div class="exam-folder-actions">';
+            html += '<button class="btn btn-sm btn-outline folder-rename-btn" data-folder-id="' +
+                esc(folder.id) + '" title="' + t('renameFolder') + '">&#9998;</button>';
+            html += '<button class="btn btn-sm btn-danger folder-delete-btn" data-folder-id="' +
+                esc(folder.id) + '" title="' + t('deleteFolder') + '">&#10005;</button>';
+            html += '</div>';
+        }
+        html += '</div>';
+
+        if (!isCollapsed) {
+            html += '<div class="exam-folder-body">';
+            if (!exams.length) {
+                html += '<p class="exam-folder-empty">' + t('emptyFolder') + '</p>';
+            } else {
+                html += renderExamContainer(exams, view);
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function renderExamContainer(exams, view) {
+        // A separate class per view, not a restyle of .exam-grid — responsive.css
+        // loads after this stylesheet and overrides .exam-grid at two breakpoints.
+        var html = '<div class="' + (view === 'list' ? 'exam-list-rows' : 'exam-grid') + '">';
+        exams.forEach(function (exam) { html += renderExamCard(exam, view); });
+        html += '</div>';
+        return html;
+    }
+
+    function renderExamCard(exam, view) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var isOwner = exam.ownerId === App.Auth.getUserId();
+        var hasFolders = App.UserPrefs.getFolders().length > 0;
+        // Keeping the .exam-card class on list rows means the existing
+        // click-to-navigate handler and its button guard work unchanged.
+        var cls = 'exam-card' + (view === 'list' ? ' exam-row' : '');
+        var group = [exam.dojo, exam.classGroup].filter(Boolean).join(' · ');
+
+        var html = '<div class="' + cls + '" data-id="' + exam.id + '"' +
+            (_canDrag() ? ' draggable="true"' : '') + '>';
+        html += '<div class="exam-card-header">';
+        html += '<h3>' + esc(exam.name) + '</h3>';
+        if (hasFolders) {
+            html += '<button class="btn btn-sm btn-outline folder-move-btn" data-id="' + exam.id +
+                '" title="' + t('moveToFolder') + '">&#128193;</button>';
+        }
+        if (isOwner) {
+            html += '<button class="btn btn-sm btn-outline rename-exam-btn" data-id="' + exam.id + '" title="' + t('editExam') + '">&#9998;</button>';
+            html += '<button class="btn btn-sm btn-danger delete-exam-btn" data-id="' + exam.id + '" title="' + t('delete') + '">&#10005;</button>';
+        }
+        html += '</div>';
+        if (group) {
+            html += '<div class="exam-card-group">' + esc(group) + '</div>';
+        }
+        html += '<div class="exam-card-body">';
+        html += '<span class="exam-date">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
+        html += '<span class="exam-count">' + (exam.examineeCount || 0) + ' ' + t('examinees') + '</span>';
+        html += '</div>';
+        html += '<div class="exam-card-actions">';
+        html += '<button class="btn btn-sm btn-outline export-exam-btn" data-id="' + exam.id + '">' + t('export') + '</button>';
+        html += '</div>';
+        html += '</div>';
+        return html;
+    }
+
+    // Drag is pointless on touch — the same call the exam table uses. The folder
+    // button is the path that works everywhere, which is why it is not
+    // drag-dependent.
+    function _canDrag() {
+        return !(App.Drawing && App.Drawing.isTouch && App.Drawing.isTouch());
+    }
+
     function bindEvents() {
         var t = App.I18n.t;
 
         document.getElementById('btn-new-exam').addEventListener('click', showNewExamModal);
 
+        // Search and sort only change what is shown, so they re-render from the
+        // exams already in memory — no fetch, no spinner flash per keystroke.
         document.getElementById('exam-search').addEventListener('input', function (e) {
             _searchTerm = e.target.value;
-            render();
+            render({ useCache: true });
         });
 
         document.getElementById('exam-sort').addEventListener('change', function (e) {
             _sortKey = e.target.value;
-            render();
+            render({ useCache: true });
+        });
+
+        document.querySelectorAll('.view-toggle-seg').forEach(function (seg) {
+            seg.addEventListener('click', function () {
+                setView(seg.dataset.view);
+                render({ useCache: true });
+            });
+        });
+
+        document.getElementById('btn-new-folder').addEventListener('click', function () {
+            showFolderNameModal(null);
         });
 
         document.getElementById('btn-import-exam').addEventListener('click', function () {
@@ -129,9 +295,15 @@ App.ExamList = (function () {
             });
         });
 
+        // Whole-card click opens the exam. Clicks that landed on one of the card's
+        // own buttons must not navigate — this covers list rows too, which keep
+        // the .exam-card class precisely so this keeps working.
         document.querySelectorAll('.exam-card').forEach(function (card) {
             card.addEventListener('click', function (e) {
-                if (e.target.closest('.delete-exam-btn') || e.target.closest('.export-exam-btn') || e.target.closest('.rename-exam-btn')) return;
+                if (e.target.closest('.delete-exam-btn') ||
+                    e.target.closest('.export-exam-btn') ||
+                    e.target.closest('.rename-exam-btn') ||
+                    e.target.closest('.folder-move-btn')) return;
                 App.Router.navigate('#/exam/' + card.dataset.id);
             });
         });
@@ -173,6 +345,188 @@ App.ExamList = (function () {
                 e.stopPropagation();
                 App.Storage.exportExam(btn.dataset.id);
             });
+        });
+
+        bindFolderEvents();
+    }
+
+    function bindFolderEvents() {
+        var t = App.I18n.t;
+
+        document.querySelectorAll('.exam-folder-toggle').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                toggleCollapsed(btn.dataset.folderKey);
+                render({ useCache: true });
+            });
+        });
+
+        document.querySelectorAll('.folder-rename-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                showFolderNameModal(btn.dataset.folderId);
+            });
+        });
+
+        document.querySelectorAll('.folder-delete-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (!confirm(t('confirmDeleteFolder'))) return;
+                // Drops its assignments too, so the exams inside reappear under
+                // Unfiled rather than disappearing.
+                App.UserPrefs.removeFolder(btn.dataset.folderId);
+                render({ useCache: true });
+            });
+        });
+
+        document.querySelectorAll('.folder-move-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                showMoveToFolderModal(btn.dataset.id);
+            });
+        });
+
+        if (_canDrag()) bindFolderDragDrop();
+    }
+
+    // HTML5 drag to file an exam. Same shape as the reorder handlers in
+    // exam-table.js. Touch devices skip this entirely and use the folder button.
+    function bindFolderDragDrop() {
+        var dragExamId = null;
+
+        document.querySelectorAll('.exam-card[draggable]').forEach(function (card) {
+            card.addEventListener('dragstart', function (e) {
+                dragExamId = card.dataset.id;
+                card.classList.add('exam-card-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragExamId); } catch (err) { /* IE */ }
+            });
+            card.addEventListener('dragend', function () {
+                card.classList.remove('exam-card-dragging');
+                document.querySelectorAll('.exam-folder-drop-active').forEach(function (x) {
+                    x.classList.remove('exam-folder-drop-active');
+                });
+                dragExamId = null;
+            });
+        });
+
+        document.querySelectorAll('.exam-folder').forEach(function (section) {
+            section.addEventListener('dragover', function (e) {
+                if (!dragExamId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                section.classList.add('exam-folder-drop-active');
+            });
+            section.addEventListener('dragleave', function (e) {
+                // Ignore moves between the section's own children.
+                if (section.contains(e.relatedTarget)) return;
+                section.classList.remove('exam-folder-drop-active');
+            });
+            section.addEventListener('drop', function (e) {
+                e.preventDefault();
+                section.classList.remove('exam-folder-drop-active');
+                if (!dragExamId) return;
+                var target = section.dataset.folderId || '';
+                if (App.UserPrefs.getExamFolderId(dragExamId) === target) return;
+                fileExam(dragExamId, target);
+            });
+        });
+    }
+
+    // Cache-first: state updates and the screen repaints straight away, the write
+    // goes out in the background. Also prunes assignments for exams that no
+    // longer exist so the map cannot grow without bound.
+    function fileExam(examId, folderId) {
+        App.UserPrefs.setExamFolder(examId, folderId, _exams.map(function (e) { return e.id; }));
+        render({ useCache: true });
+    }
+
+    // --- Folder modals ---
+
+    // folderId null creates a new folder; otherwise renames that one.
+    function showFolderNameModal(folderId) {
+        var t = App.I18n.t;
+        var modalContainer = document.getElementById('modal-container');
+        var existing = folderId
+            ? App.UserPrefs.getFolders().filter(function (f) { return f.id === folderId; })[0]
+            : null;
+
+        var html = '<div class="modal-overlay" id="folder-name-overlay"><div class="modal">';
+        html += '<h2>' + (folderId ? t('renameFolder') : t('newFolder')) + '</h2>';
+        html += '<div class="form-group">';
+        html += '<label for="folder-name-input">' + t('folderName') + '</label>';
+        html += '<input type="text" id="folder-name-input" value="' +
+            App.Utils.escapeHtml(existing ? existing.name : '') + '">';
+        html += '</div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-primary" id="btn-save-folder">' + t('save') + '</button>';
+        html += '<button class="btn btn-outline" id="btn-cancel-folder">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        function close() { modalContainer.innerHTML = ''; }
+        function commit() {
+            var input = document.getElementById('folder-name-input');
+            var name = input.value.trim();
+            if (!name) { input.focus(); return; }
+            if (folderId) App.UserPrefs.renameFolder(folderId, name);
+            else App.UserPrefs.addFolder(name);
+            close();
+            render({ useCache: true });
+        }
+
+        document.getElementById('btn-save-folder').addEventListener('click', commit);
+        document.getElementById('btn-cancel-folder').addEventListener('click', close);
+        document.getElementById('folder-name-overlay').addEventListener('click', function (e) {
+            if (e.target === this) close();
+        });
+        var input = document.getElementById('folder-name-input');
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(); });
+        input.focus();
+        input.select();
+    }
+
+    // The path that works everywhere, including touch where drag is disabled.
+    function showMoveToFolderModal(examId) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var modalContainer = document.getElementById('modal-container');
+        var folders = App.UserPrefs.getFolders();
+        var current = App.UserPrefs.getExamFolderId(examId);
+        var exam = _exams.filter(function (e) { return e.id === examId; })[0] || {};
+
+        var html = '<div class="modal-overlay" id="move-folder-overlay"><div class="modal">';
+        html += '<h2>' + t('moveToFolder') + '</h2>';
+        html += '<p class="invite-subtitle">' + esc(exam.name || '') + '</p>';
+        html += '<div class="import-list">';
+        folders.forEach(function (f) {
+            html += '<button type="button" class="folder-pick-row' +
+                (f.id === current ? ' folder-pick-current' : '') +
+                '" data-folder-id="' + esc(f.id) + '">';
+            html += '<span>&#128193; ' + esc(f.name) + '</span>';
+            if (f.id === current) html += '<span class="folder-pick-check">&#10004;</span>';
+            html += '</button>';
+        });
+        html += '<button type="button" class="folder-pick-row' +
+            (!current ? ' folder-pick-current' : '') + '" data-folder-id="">';
+        html += '<span>' + t('removeFromFolder') + '</span>';
+        if (!current) html += '<span class="folder-pick-check">&#10004;</span>';
+        html += '</button>';
+        html += '</div>';
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-outline" id="btn-cancel-move">' + t('cancel') + '</button>';
+        html += '</div></div></div>';
+        modalContainer.innerHTML = html;
+
+        function close() { modalContainer.innerHTML = ''; }
+        document.querySelectorAll('.folder-pick-row').forEach(function (row) {
+            row.addEventListener('click', function () {
+                close();
+                fileExam(examId, row.dataset.folderId || '');
+            });
+        });
+        document.getElementById('btn-cancel-move').addEventListener('click', close);
+        document.getElementById('move-folder-overlay').addEventListener('click', function (e) {
+            if (e.target === this) close();
         });
     }
 

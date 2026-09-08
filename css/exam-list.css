@@ -30,10 +30,93 @@
     cursor: pointer;
 }
 
+/* Card / list view switch — same shape as the exam table's draft toggle */
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--bg, #f5f5f5);
+    height: 36px;
+    align-items: stretch;
+    flex-shrink: 0;
+}
+
+.view-toggle-seg {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #757575);
+    padding: 0 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.view-toggle-seg.active {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 700;
+}
+
+.view-toggle-seg:hover:not(.active) {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
 .exam-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
+}
+
+/* List view. A class of its own rather than a restyle of .exam-grid, because
+   responsive.css loads after this file and overrides .exam-grid's column count
+   at two breakpoints. */
+.exam-list-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Rows keep the .exam-card class so the click-to-navigate handler and the
+   edit/delete/export buttons keep working — only the layout changes. */
+.exam-list-rows .exam-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    flex-wrap: wrap;
+}
+
+/* The card lift reads as a glitch on a full-width row. */
+.exam-list-rows .exam-card:hover {
+    transform: none;
+}
+
+.exam-list-rows .exam-card-header {
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 180px;
+    align-items: center;
+}
+
+.exam-list-rows .exam-card-header h3 {
+    font-size: 0.98rem;
+}
+
+.exam-list-rows .exam-card-group,
+.exam-list-rows .exam-card-body {
+    margin-bottom: 0;
+}
+
+.exam-list-rows .exam-card-body {
+    gap: 14px;
+    justify-content: flex-start;
+    flex-shrink: 0;
 }
 
 .exam-card {
@@ -79,6 +162,109 @@
     margin-bottom: 8px;
     overflow-wrap: break-word;
 }
+
+/* === Folders === */
+
+.exam-folder {
+    margin-bottom: 18px;
+    border-radius: var(--radius);
+    transition: background 0.15s, box-shadow 0.15s;
+}
+
+/* Drop target feedback while dragging an exam over a folder */
+.exam-folder-drop-active {
+    background: var(--primary-light);
+    box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.exam-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 12px;
+}
+
+.exam-folder-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    padding: 4px 2px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+    cursor: pointer;
+    text-align: start;
+}
+
+.exam-folder-chevron {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
+.exam-folder-name {
+    overflow-wrap: break-word;
+    min-width: 0;
+}
+
+.exam-folder-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 1px 8px;
+    flex-shrink: 0;
+}
+
+.exam-folder-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.exam-folder-empty {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: 14px 4px;
+    margin: 0;
+    text-align: center;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.exam-card-dragging {
+    opacity: 0.45;
+}
+
+/* Folder picker rows in the move-to-folder modal */
+.folder-pick-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 12px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: none;
+    font-family: inherit;
+    font-size: 0.9rem;
+    text-align: start;
+    cursor: pointer;
+}
+
+.folder-pick-row:last-child { border-bottom: none; }
+.folder-pick-row:hover { background: var(--bg); }
+.folder-pick-current { font-weight: 600; color: var(--primary-dark); }
+.folder-pick-check { color: var(--primary); flex-shrink: 0; }
 
 /* Belt-system checkboxes on the new/edit exam form */
 .belt-system-checks {
