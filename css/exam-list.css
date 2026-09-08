@@ -230,6 +230,22 @@
     flex-shrink: 0;
 }
 
+/* Reorder arrows sit tighter than the rename/delete pair — four buttons in one
+   header is already busy. */
+.folder-move-up-btn,
+.folder-move-down-btn {
+    padding: 0 7px;
+    font-size: 0.7rem;
+}
+
+/* The first folder cannot move up and the last cannot move down. Greyed rather
+   than hidden, so the button row does not shift as folders are reordered. */
+.exam-folder-actions .btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    transform: none;
+}
+
 .exam-folder-empty {
     font-size: 0.85rem;
     color: var(--text-secondary);

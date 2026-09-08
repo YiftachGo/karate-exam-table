@@ -150,19 +150,26 @@ App.ExamList = (function () {
         });
 
         var html = '';
-        folders.forEach(function (f) {
-            html += renderFolderSection(f, byFolder[f.id], view, !!collapsed[f.id], true);
+        folders.forEach(function (f, i) {
+            html += renderFolderSection(f, byFolder[f.id], view, !!collapsed[f.id], {
+                canEdit: true,
+                isFirst: i === 0,
+                isLast: i === folders.length - 1
+            });
         });
         // Unfiled is always present so there is somewhere to drag exams back to.
+        // It has no controls and always sits last, so it never reorders.
         html += renderFolderSection(
-            { id: '', name: t('unfiled') }, unfiled, view, !!collapsed['__unfiled'], false);
+            { id: '', name: t('unfiled') }, unfiled, view, !!collapsed['__unfiled'], { canEdit: false });
         return html;
     }
 
-    function renderFolderSection(folder, exams, view, isCollapsed, canEdit) {
+    function renderFolderSection(folder, exams, view, isCollapsed, opts) {
         var t = App.I18n.t;
         var esc = App.Utils.escapeHtml;
         var dropId = folder.id || '';
+        opts = opts || {};
+        var canEdit = !!opts.canEdit;
 
         var html = '<div class="exam-folder' + (isCollapsed ? ' collapsed' : '') +
             '" data-folder-id="' + esc(dropId) + '" data-folder-key="' +
@@ -176,6 +183,16 @@ App.ExamList = (function () {
         html += '</button>';
         if (canEdit) {
             html += '<div class="exam-folder-actions">';
+            // Up/down rather than a drag handle: dragging is already spoken for on
+            // this screen (an exam onto a folder) and does not work on touch at
+            // all, so arrows are the only gesture that works everywhere.
+            // Vertical arrows also need no RTL mirroring.
+            html += '<button class="btn btn-sm btn-outline folder-move-up-btn" data-folder-id="' +
+                esc(folder.id) + '" title="' + t('moveFolderUp') + '"' +
+                (opts.isFirst ? ' disabled' : '') + '>&#9650;</button>';
+            html += '<button class="btn btn-sm btn-outline folder-move-down-btn" data-folder-id="' +
+                esc(folder.id) + '" title="' + t('moveFolderDown') + '"' +
+                (opts.isLast ? ' disabled' : '') + '>&#9660;</button>';
             html += '<button class="btn btn-sm btn-outline folder-rename-btn" data-folder-id="' +
                 esc(folder.id) + '" title="' + t('renameFolder') + '">&#9998;</button>';
             html += '<button class="btn btn-sm btn-danger folder-delete-btn" data-folder-id="' +
@@ -357,6 +374,20 @@ App.ExamList = (function () {
             btn.addEventListener('click', function () {
                 toggleCollapsed(btn.dataset.folderKey);
                 render({ useCache: true });
+            });
+        });
+
+        document.querySelectorAll('.folder-move-up-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (App.UserPrefs.moveFolder(btn.dataset.folderId, -1)) render({ useCache: true });
+            });
+        });
+
+        document.querySelectorAll('.folder-move-down-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (App.UserPrefs.moveFolder(btn.dataset.folderId, 1)) render({ useCache: true });
             });
         });
 

@@ -101,6 +101,28 @@ App.UserPrefs = (function () {
         return folder;
     }
 
+    // Swaps a folder with its neighbour. delta -1 moves it earlier, +1 later.
+    // Returns true if anything moved, so the caller can skip a pointless repaint.
+    //
+    // Rewrites every order value as 0..n-1 afterwards rather than just swapping
+    // the two numbers — that also heals folders whose orders had gone duplicate
+    // or gappy, which a bare swap would leave broken forever.
+    function moveFolder(folderId, delta) {
+        var p = _cache();
+        var sorted = getFolders();
+        var from = -1;
+        sorted.forEach(function (f, i) { if (f.id === folderId) from = i; });
+        var to = from + delta;
+        if (from === -1 || to < 0 || to >= sorted.length) return false;
+
+        var moved = sorted.splice(from, 1)[0];
+        sorted.splice(to, 0, moved);
+        sorted.forEach(function (f, i) { f.order = i; });
+        p.examFolders = sorted;
+        _pushFolders();
+        return true;
+    }
+
     function renameFolder(folderId, name) {
         var p = _cache();
         (p.examFolders || []).forEach(function (f) {
@@ -156,6 +178,7 @@ App.UserPrefs = (function () {
         getExamFolderId: getExamFolderId,
         saveFolders: saveFolders,
         addFolder: addFolder,
+        moveFolder: moveFolder,
         renameFolder: renameFolder,
         removeFolder: removeFolder,
         setExamFolder: setExamFolder,
