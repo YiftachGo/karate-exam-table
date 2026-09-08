@@ -247,41 +247,6 @@ input:focus, select:focus, textarea:focus {
     max-width: 560px;
 }
 
-/* Copy examinees modal */
-.copy-examinee-list {
-    max-height: 220px;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.copy-select-all {
-    font-weight: 600;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-}
-
-.copy-examinee-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
-}
-
-.copy-rank {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-}
-
 /* Category management modal */
 .cat-mgr-list {
     display: flex;

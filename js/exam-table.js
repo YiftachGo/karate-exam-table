@@ -123,12 +123,14 @@ App.ExamTable = (function () {
         html += '<button class="btn btn-outline' + (selectMode ? ' active' : '') + '" id="btn-select-mode">' + (selectMode ? t('exitSelectMode') : t('selectMode')) + '</button>';
         html += renderDraftToggle();
 
-        // Manage Test dropdown — collapses copy/import/export/share/invite
+        // Manage Test dropdown — collapses import/export/share/invite.
+        // Note two distinct imports: "import-from-exam" pulls students from another
+        // exam, "import" reads an xlsx/csv/json file.
         html += '<div class="menu-wrapper" id="manage-test-wrapper">';
         html += '<button class="btn btn-outline" id="btn-manage-test">' + t('manageTest') + ' &#9662;</button>';
         html += '<div class="menu-dropdown" id="manage-test-menu">';
         html += '<button class="menu-item" data-action="manage-categories">' + t('manageCategories') + '</button>';
-        html += '<button class="menu-item" data-action="copy">' + t('copyExaminees') + '</button>';
+        html += '<button class="menu-item" data-action="import-from-exam">' + t('importFromExam') + '</button>';
         html += '<button class="menu-item" data-action="import">' + t('importStudents') + '</button>';
         html += '<button class="menu-item" data-action="export">' + t('export') + '</button>';
         html += '<button class="menu-item" data-action="sync-directory">' + t('syncStudentDirectory') + '</button>';
@@ -152,8 +154,14 @@ App.ExamTable = (function () {
         }
 
         if (examinees.length === 0) {
-            html += '<div class="empty-state">';
+            // A fresh exam is exactly where a trainer looks for "bring last term's
+            // students over", so surface it here rather than only in the menu.
+            html += '<div class="empty-state empty-state-exam">';
             html += '<p>' + t('addExaminee') + '</p>';
+            html += '<div class="empty-state-actions">';
+            html += '<button class="btn btn-primary" id="btn-empty-add-examinee">+ ' + t('addExaminee') + '</button>';
+            html += '<button class="btn btn-outline" id="btn-empty-import-exam">' + t('importFromExam') + '</button>';
+            html += '</div>';
             html += '</div>';
         } else {
             html += '<div class="table-wrapper">';
@@ -1129,12 +1137,18 @@ App.ExamTable = (function () {
             showAddExamineeModal();
         });
 
+        // Empty-state shortcuts — only rendered when the exam has no students yet.
+        var emptyAdd = document.getElementById('btn-empty-add-examinee');
+        if (emptyAdd) emptyAdd.addEventListener('click', showAddExamineeModal);
+        var emptyImport = document.getElementById('btn-empty-import-exam');
+        if (emptyImport) emptyImport.addEventListener('click', openImportFromExam);
+
         document.getElementById('btn-general-remarks').addEventListener('click', showGeneralRemarksModal);
 
         // Manage Test dropdown
         bindMenuDropdown('btn-manage-test', 'manage-test-menu', function (action) {
             if (action === 'manage-categories') showManageCategoriesModal();
-            else if (action === 'copy') showCopyExamineesModal();
+            else if (action === 'import-from-exam') openImportFromExam();
             else if (action === 'import') document.getElementById('import-students-file').click();
             else if (action === 'export') showExportModal();
             else if (action === 'sync-directory') syncStudentDirectory();
@@ -1569,74 +1583,16 @@ App.ExamTable = (function () {
         document.getElementById('invite-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
     }
 
-    // --- Copy Examinees Modal ---
-
-    async function showCopyExamineesModal() {
-        var t = App.I18n.t;
-        var modalContainer = document.getElementById('modal-container');
-        var examinees = getSortedExaminees();
-        var allExams = await App.Storage.getExamIndex();
-        var otherExams = allExams.filter(function (e) { return e.id !== currentExamId; });
-
-        var html = '<div class="modal-overlay" id="copy-overlay"><div class="modal">';
-        html += '<h2>' + t('copyExaminees') + '</h2>';
-
-        // Examinee list
-        html += '<div class="form-group">';
-        html += '<label>' + t('selectExaminees') + '</label>';
-        html += '<div class="copy-examinee-list">';
-        html += '<label class="copy-select-all"><input type="checkbox" id="copy-select-all"> ' + t('selectAll') + '</label>';
-        examinees.forEach(function (ex) {
-            html += '<label class="copy-examinee-item">';
-            html += '<input type="checkbox" class="copy-examinee-cb" value="' + ex.id + '"> ';
-            html += App.Utils.escapeHtml(ex.firstName + ' ' + ex.lastName);
-            if (ex.rank) html += ' <span class="copy-rank">(' + App.Utils.escapeHtml(ex.rank) + ')</span>';
-            html += '</label>';
-        });
-        html += '</div>';
-        html += '</div>';
-
-        // Target exam dropdown
-        html += '<div class="form-group">';
-        html += '<label>' + t('selectTargetExam') + '</label>';
-        html += '<select id="copy-target-exam">';
-        html += '<option value="">' + t('selectTargetExam') + '</option>';
-        otherExams.forEach(function (e) {
-            html += '<option value="' + e.id + '">' + App.Utils.escapeHtml(e.name) + (e.date ? ' — ' + App.Utils.formatDate(e.date) : '') + '</option>';
-        });
-        html += '</select>';
-        html += '</div>';
-
-        html += '<div id="copy-error" class="auth-error" style="display:none"></div>';
-        html += '<div class="modal-actions">';
-        html += '<button class="btn btn-primary" id="btn-confirm-copy">' + t('copy') + '</button>';
-        html += '<button class="btn btn-outline" id="btn-cancel-copy">' + t('cancel') + '</button>';
-        html += '</div></div></div>';
-        modalContainer.innerHTML = html;
-
-        // Select all toggle
-        document.getElementById('copy-select-all').addEventListener('change', function () {
-            document.querySelectorAll('.copy-examinee-cb').forEach(function (cb) {
-                cb.checked = this.checked;
-            }.bind(this));
-        });
-
-        document.getElementById('btn-cancel-copy').addEventListener('click', function () { modalContainer.innerHTML = ''; });
-        document.getElementById('copy-overlay').addEventListener('click', function (e) { if (e.target === this) modalContainer.innerHTML = ''; });
-
-        document.getElementById('btn-confirm-copy').addEventListener('click', async function () {
-            var errorEl = document.getElementById('copy-error');
-            errorEl.style.display = 'none';
-            var targetExamId = document.getElementById('copy-target-exam').value;
-            var selectedIds = Array.from(document.querySelectorAll('.copy-examinee-cb:checked')).map(function (cb) { return cb.value; });
-
-            if (!targetExamId) { errorEl.textContent = t('noExamSelected'); errorEl.style.display = ''; return; }
-            if (!selectedIds.length) { errorEl.textContent = t('noExamineesSelected'); errorEl.style.display = ''; return; }
-
-            document.getElementById('btn-confirm-copy').disabled = true;
-            var count = await App.Storage.copyExaminees(currentExamId, targetExamId, selectedIds);
-            modalContainer.innerHTML = '';
-            App.showToast(t('examineesCopied'));
+    // Pull students in from another exam, each with the belt they earned there.
+    // The picker and review screens live in App.ImportStudents because the exam
+    // list uses the identical review step after creating an exam.
+    function openImportFromExam() {
+        App.ImportStudents.openPicker({
+            targetExam: {
+                id: currentExamId,
+                groupKey: (cachedExam && cachedExam.groupKey) || ''
+            },
+            onDone: function () { renderTable(); }
         });
     }
 

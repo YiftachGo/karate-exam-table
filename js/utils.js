@@ -402,6 +402,27 @@ App.Utils = (function () {
         return looseName(club);
     }
 
+    // Identity key for one person, used to spot a student who is already in an
+    // exam before importing them again. Names are folded, so 'בן-אור' and
+    // 'בן אור' match; the birthdate is reduced to digits, which absorbs
+    // separators but NOT a different field order — '2011-04-07' and '07/04/2011'
+    // still differ. Everything entered in the app comes from <input type="date">
+    // and is therefore always YYYY-MM-DD; only a spreadsheet import could supply
+    // another order, and guessing between D/M and M/D would be worse than missing
+    // the match.
+    //
+    // Deliberately stronger than findExamineeHistory's own keyFor, which compares
+    // raw birthdate strings — that one is left alone, since changing how an
+    // existing feature matches people is a separate decision.
+    //
+    // Two students sharing a name with no recorded birthdate collide here. That is
+    // why a match only unticks and labels a row rather than hiding it: the trainer
+    // can see the call and override it.
+    function examineeMatchKey(d) {
+        d = d || {};
+        return looseName(d.firstName) + '|' + looseName(d.lastName) + '|' + dobDigits(d.dateOfBirth);
+    }
+
     // Identity of a dojo+class group, used to find "the previous exam of this
     // group". The class name is free text, so it is normalized — otherwise
     // 'בוגרים' and 'בוגרים ' would look like two different classes.
@@ -448,6 +469,7 @@ App.Utils = (function () {
         CLUBS: CLUBS,
         buildClubSelect: buildClubSelect,
         examGroupKey: examGroupKey,
+        examineeMatchKey: examineeMatchKey,
         renderGasshukuList: renderGasshukuList,
         readGasshukuList: readGasshukuList,
         renderLocationDateList: renderLocationDateList,

@@ -400,128 +400,19 @@ App.ExamList = (function () {
         try {
             var previous = await App.Storage.findPreviousExamInGroup(exam.groupKey, exam.id);
             if (previous) {
-                showImportReviewModal(exam, previous);
+                // Same review screen the exam table uses; here it always ends by
+                // taking the trainer into the exam that was just created.
+                App.ImportStudents.openReview({
+                    targetExam: exam,
+                    sourceExam: previous,
+                    onDone: function () { App.Router.navigate('#/exam/' + exam.id); }
+                });
                 return;
             }
         } catch (err) {
             console.warn('previous-exam lookup failed:', err);
         }
         App.Router.navigate('#/exam/' + exam.id);
-    }
-
-    // --- Import from the group's previous exam ---
-
-    function showImportReviewModal(exam, previous) {
-        var t = App.I18n.t;
-        var esc = App.Utils.escapeHtml;
-        var modalContainer = document.getElementById('modal-container');
-
-        function go() { App.Router.navigate('#/exam/' + exam.id); }
-
-        modalContainer.innerHTML = '<div class="modal-overlay" id="import-overlay"><div class="modal">' +
-            '<h2>' + t('importReviewTitle') + '</h2>' +
-            '<p class="invite-subtitle">' + t('loading') + '</p></div></div>';
-
-        App.Storage.getGroupImportCandidates(previous.id).then(function (candidates) {
-            if (!candidates.length) {
-                modalContainer.innerHTML = '';
-                go();
-                return;
-            }
-
-            var html = '<div class="modal-overlay" id="import-overlay"><div class="modal modal-wide">';
-            html += '<h2>' + t('importReviewTitle') + '</h2>';
-            html += '<p class="invite-subtitle">' + t('importReviewSubtitle') + '</p>';
-            html += '<p class="import-source">' + t('previousExamLabel') + ': ' +
-                esc(previous.name || '') + (previous.date ? ' — ' + App.Utils.formatDate(previous.date) : '') + '</p>';
-
-            html += '<div class="import-list">';
-            html += '<label class="import-select-all"><input type="checkbox" id="import-select-all" checked> ' +
-                t('selectAll') + '</label>';
-            candidates.forEach(function (c, i) {
-                var verdictClass = c.verdict === 'pass' ? 'verdict-pass'
-                    : c.verdict === 'fail' ? 'verdict-fail' : 'verdict-none';
-                var verdictLabel = c.verdict === 'pass' ? t('passedLastExam')
-                    : c.verdict === 'fail' ? t('failedLastExam') : t('notGraded');
-
-                html += '<label class="import-row' + (c.promoted ? ' import-row-promoted' : '') + '">';
-                html += '<input type="checkbox" class="import-cb" data-idx="' + i + '" checked>';
-                html += '<span class="import-name">' + esc(c.firstName + ' ' + c.lastName) + '</span>';
-                html += '<span class="import-verdict ' + verdictClass + '">' + verdictLabel + '</span>';
-                html += '<span class="import-rank">';
-                if (c.promoted) {
-                    html += '<span class="import-rank-old">' + esc(c.oldRank || '—') + '</span>';
-                    // Left-pointing for the RTL base layout, where the old rank
-                    // sits to the right. CSS flips it under [dir="ltr"].
-                    html += '<span class="import-rank-arrow">&larr;</span>';
-                    html += '<span class="import-rank-new">' + esc(c.newRank || '—') + '</span>';
-                } else {
-                    html += esc(c.newRank || c.oldRank || '—');
-                    html += ' <span class="import-rank-same">(' + t('rankUnchanged') + ')</span>';
-                }
-                html += '</span>';
-                html += '</label>';
-            });
-            html += '</div>';
-
-            html += '<div id="import-error" class="auth-error" style="display:none"></div>';
-            html += '<div class="modal-actions">';
-            html += '<button class="btn btn-primary" id="btn-do-import">' + t('importSelected') + '</button>';
-            html += '<button class="btn btn-outline" id="btn-skip-import">' + t('skipImport') + '</button>';
-            html += '</div></div></div>';
-            modalContainer.innerHTML = html;
-
-            document.getElementById('import-select-all').addEventListener('change', function () {
-                var on = this.checked;
-                document.querySelectorAll('.import-cb').forEach(function (cb) { cb.checked = on; });
-            });
-
-            // Skipping still leaves the exam created — just empty.
-            document.getElementById('btn-skip-import').addEventListener('click', function () {
-                modalContainer.innerHTML = '';
-                go();
-            });
-            document.getElementById('import-overlay').addEventListener('click', function (e) {
-                if (e.target === this) { modalContainer.innerHTML = ''; go(); }
-            });
-
-            document.getElementById('btn-do-import').addEventListener('click', async function () {
-                var btn = this;
-                var errorEl = document.getElementById('import-error');
-                errorEl.style.display = 'none';
-
-                var items = Array.from(document.querySelectorAll('.import-cb:checked'))
-                    .map(function (cb) {
-                        var c = candidates[parseInt(cb.dataset.idx, 10)];
-                        return {
-                            examineeId: c.examineeId,
-                            rank: c.newRank,
-                            targetRank: c.newTargetRank
-                        };
-                    });
-
-                if (!items.length) { modalContainer.innerHTML = ''; go(); return; }
-
-                btn.disabled = true;
-                btn.textContent = t('loading');
-                try {
-                    var n = await App.Storage.importExamineesFromGroup(previous.id, exam.id, items);
-                    modalContainer.innerHTML = '';
-                    App.showToast(n + ' ' + t('studentsImportedCount'));
-                    go();
-                } catch (err) {
-                    console.error('group import failed:', err);
-                    btn.disabled = false;
-                    btn.textContent = t('importSelected');
-                    errorEl.textContent = t('error') + ': ' + (err.message || err.code || err);
-                    errorEl.style.display = '';
-                }
-            });
-        }).catch(function (err) {
-            console.warn('import candidates failed:', err);
-            modalContainer.innerHTML = '';
-            go();
-        });
     }
 
     return { render: render };

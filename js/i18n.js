@@ -85,15 +85,7 @@ App.I18n = (function () {
             thankYou: 'תודה!',
             loading: 'טוען...',
             error: 'שגיאה',
-            // Copy examinees
-            copyExaminees: 'העתק נבחנים',
-            selectTargetExam: 'בחר מבחן יעד',
-            selectExaminees: 'בחר נבחנים',
             selectAll: 'בחר הכל',
-            copy: 'העתק',
-            examineesCopied: 'הנבחנים הועתקו בהצלחה',
-            noExamSelected: 'אנא בחר מבחן יעד',
-            noExamineesSelected: 'אנא בחר לפחות נבחן אחד',
             // Category management
             manageCategories: 'נהל קטגוריות',
             addCategory: 'הוסף קטגוריה',
@@ -174,8 +166,12 @@ App.I18n = (function () {
             allBeltSystems: 'כל הדרגות',
             showAllRanks: 'הצג את כל הדרגות',
             editExam: 'ערוך מבחן',
-            // Import from the group's previous exam
-            importFromPrevious: 'ייבוא מהמבחן הקודם',
+            // Import students from another exam
+            importFromExam: 'ייבוא נבחנים ממבחן אחר',
+            selectSourceExam: 'בחר את המבחן שממנו לייבא',
+            noOtherExams: 'אין מבחנים אחרים לייבוא ממנו',
+            sameGroup: 'אותה קבוצה',
+            alreadyInThisExam: 'כבר במבחן זה',
             importReviewTitle: 'ייבוא נבחנים מהמבחן הקודם',
             importReviewSubtitle: 'הדרגות עודכנו לפי תוצאות המבחן הקודם. בטל סימון של מי שלא ממשיך',
             previousExamLabel: 'מבחן קודם',
@@ -375,15 +371,7 @@ App.I18n = (function () {
             thankYou: 'Thank You!',
             loading: 'Loading...',
             error: 'Error',
-            // Copy examinees
-            copyExaminees: 'Copy Examinees',
-            selectTargetExam: 'Select Target Exam',
-            selectExaminees: 'Select Examinees',
             selectAll: 'Select All',
-            copy: 'Copy',
-            examineesCopied: 'Examinees copied successfully',
-            noExamSelected: 'Please select a target exam',
-            noExamineesSelected: 'Please select at least one examinee',
             // Category management
             manageCategories: 'Manage Categories',
             addCategory: 'Add Category',
@@ -464,8 +452,12 @@ App.I18n = (function () {
             allBeltSystems: 'All belts',
             showAllRanks: 'Show all belts',
             editExam: 'Edit Exam',
-            // Import from the group's previous exam
-            importFromPrevious: 'Import from previous exam',
+            // Import students from another exam
+            importFromExam: 'Import students from another exam',
+            selectSourceExam: 'Choose the exam to import from',
+            noOtherExams: 'There are no other exams to import from',
+            sameGroup: 'Same class',
+            alreadyInThisExam: 'Already in this exam',
             importReviewTitle: 'Import students from the previous exam',
             importReviewSubtitle: 'Belts have been updated from the previous exam\'s results. Uncheck anyone not continuing',
             previousExamLabel: 'Previous exam',

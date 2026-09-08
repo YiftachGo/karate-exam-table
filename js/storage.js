@@ -854,53 +854,6 @@ App.Storage = (function () {
         return { id: examineeRef.id, selfEditToken: selfEditToken };
     }
 
-    // --- Copy Examinees ---
-
-    async function copyExaminees(sourceExamId, targetExamId, examineeIds) {
-        var targetRef = App.db.collection('exams').doc(targetExamId);
-        var targetDoc = await targetRef.get();
-        var currentCount = (targetDoc.data().examineeCount || 0);
-
-        var batch = App.db.batch();
-        var addedCount = 0;
-
-        for (var i = 0; i < examineeIds.length; i++) {
-            var sourceDoc = await App.db.collection('exams').doc(sourceExamId)
-                .collection('examinees').doc(examineeIds[i]).get();
-            if (!sourceDoc.exists) continue;
-            var ex = sourceDoc.data();
-            var newRef = targetRef.collection('examinees').doc();
-            batch.set(newRef, {
-                firstName: ex.firstName || '',
-                lastName: ex.lastName || '',
-                dateOfBirth: ex.dateOfBirth || '',
-                rank: ex.rank || '',
-                targetRank: ex.targetRank || '',
-                club: ex.club || '',
-                trainingStartDate: ex.trainingStartDate || '',
-                lastExamDate: ex.lastExamDate || '',
-                trainingsPerWeek: ex.trainingsPerWeek || '',
-                beltTrainings: Array.isArray(ex.beltTrainings) ? ex.beltTrainings : [],
-                gasshukus: Array.isArray(ex.gasshukus) ? ex.gasshukus : [],
-                examPayment: ex.examPayment || '',
-                photoUrl: ex.photoUrl || '',
-                order: currentCount + addedCount,
-                addedBy: 'copied:' + sourceExamId,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            addedCount++;
-        }
-
-        if (addedCount > 0) {
-            await batch.commit();
-            await targetRef.update({
-                examineeCount: firebase.firestore.FieldValue.increment(addedCount),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        }
-        return addedCount;
-    }
-
     // --- Dojo/class groups ---
 
     // Most recent other exam sharing this exam's dojo+class, or null.
@@ -920,12 +873,49 @@ App.Storage = (function () {
         return peers[0];
     }
 
-    // Roster of a previous exam with each student's outcome resolved, ready for
-    // the import review screen. One getExam call — it already stitches examinees
-    // and allGrades together, so outcomes need no extra reads.
-    async function getGroupImportCandidates(sourceExamId) {
+    // Every identity already sitting in an exam, for spotting a student who would
+    // be imported twice.
+    async function _examineeKeysIn(examId) {
+        var keys = {};
+        if (!examId) return keys;
+        try {
+            var snap = await App.db.collection('exams').doc(examId)
+                .collection('examinees').get();
+            snap.docs.forEach(function (d) {
+                keys[App.Utils.examineeMatchKey(d.data())] = true;
+            });
+        } catch (e) {
+            // A failed check just means nothing gets flagged — never block the import.
+            console.warn('duplicate check failed for', examId, e);
+        }
+        return keys;
+    }
+
+    // The highest `order` actually in use, so imported students append after the
+    // existing ones. Deliberately not the examineeCount field, which is documented
+    // as unreliable above — a stale count would collide orders and interleave the
+    // new students among the current roster.
+    async function _maxExamineeOrder(examId) {
+        var max = -1;
+        var snap = await App.db.collection('exams').doc(examId)
+            .collection('examinees').get();
+        snap.docs.forEach(function (d) {
+            var o = d.data().order;
+            if (typeof o === 'number' && o > max) max = o;
+        });
+        return max;
+    }
+
+    // Roster of another exam with each student's outcome resolved, ready for the
+    // import review screen. One getExam call — it already stitches examinees and
+    // allGrades together, so outcomes need no extra reads.
+    //
+    // targetExamId is optional; pass it to have each candidate flagged when
+    // somebody with the same identity is already in that exam.
+    async function getImportCandidates(sourceExamId, targetExamId) {
         var exam = await getExam(sourceExamId);
         if (!exam) return [];
+        var present = targetExamId ? await _examineeKeysIn(targetExamId) : {};
         var out = [];
         Object.keys(exam.examinees || {}).forEach(function (id) {
             var ex = exam.examinees[id];
@@ -935,6 +925,7 @@ App.Storage = (function () {
                 examineeId: id,
                 firstName: ex.firstName || '',
                 lastName: ex.lastName || '',
+                dateOfBirth: ex.dateOfBirth || '',
                 oldRank: ex.rank || '',
                 previousTargetRank: ex.targetRank || '',
                 verdict: outcome.verdict,
@@ -943,6 +934,7 @@ App.Storage = (function () {
                 // Passed -> the trainer picks a fresh goal. Failed or ungraded ->
                 // they are re-testing for the same belt, so keep it.
                 newTargetRank: outcome.verdict === 'pass' ? '' : (ex.targetRank || ''),
+                alreadyPresent: !!present[App.Utils.examineeMatchKey(ex)],
                 order: typeof ex.order === 'number' ? ex.order : 0
             });
         });
@@ -950,22 +942,19 @@ App.Storage = (function () {
         return out;
     }
 
-    // Copies students from the group's previous exam into targetExamId.
-    //
-    // Distinct from copyExaminees (a push: "send these students to that exam"),
-    // which carries rank/targetRank over verbatim with no promotion and drags
-    // examPayment across exams. Here `items` holds the values the trainer just
-    // approved on the review screen, so what was reviewed is what gets written.
+    // Brings students from another exam into targetExamId, each with the belt the
+    // review screen showed. `items` holds the values the trainer just approved, so
+    // what was reviewed is exactly what gets written.
     //
     // items: [{ examineeId, rank, targetRank }]
-    async function importExamineesFromGroup(sourceExamId, targetExamId, items) {
+    async function importExaminees(sourceExamId, targetExamId, items) {
         if (!items || !items.length) return 0;
 
         var targetRef = App.db.collection('exams').doc(targetExamId);
         var targetDoc = await targetRef.get();
         var targetData = targetDoc.data() || {};
-        var currentCount = targetData.examineeCount || 0;
         var targetDojo = targetData.dojo || '';
+        var nextOrder = (await _maxExamineeOrder(targetExamId)) + 1;
 
         var sourceDoc = await App.db.collection('exams').doc(sourceExamId).get();
         var sourceDate = sourceDoc.exists ? (sourceDoc.data().date || '') : '';
@@ -1000,8 +989,8 @@ App.Storage = (function () {
                 theoryExamGrade: '',
                 photoUrl: ex.photoUrl || '',
                 linkedRecordIds: [sourceExamId + '__' + item.examineeId],
-                order: currentCount + added,
-                addedBy: 'imported-group:' + sourceExamId,
+                order: nextOrder + added,
+                addedBy: 'imported:' + sourceExamId,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
             added++;
@@ -1471,14 +1460,13 @@ App.Storage = (function () {
         resolveExamOutcome: resolveExamOutcome,
         selfRegisterReturning: selfRegisterReturning,
         findPreviousExamInGroup: findPreviousExamInGroup,
-        getGroupImportCandidates: getGroupImportCandidates,
-        importExamineesFromGroup: importExamineesFromGroup,
+        getImportCandidates: getImportCandidates,
+        importExaminees: importExaminees,
         exportExam: exportExam,
         importExam: importExam,
         exportExamineesToExcel: exportExamineesToExcel,
         exportExamineesToCsv: exportExamineesToCsv,
         importExamineesFromFile: importExamineesFromFile,
-        copyExaminees: copyExaminees,
         updateCategoryOrder: updateCategoryOrder,
         updateCustomCategories: updateCustomCategories,
         addTrainerById: addTrainerById,

@@ -153,6 +153,97 @@
 .import-row-promoted { background: rgba(67, 160, 71, 0.07); }
 .import-row-promoted:hover { background: rgba(67, 160, 71, 0.13); }
 
+/* Already in the target exam — dimmed and unticked, but still selectable. */
+.import-row-present { opacity: 0.6; }
+.import-row-present:hover { opacity: 1; }
+
+.import-present-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #fff3e0;
+    color: #e65100;
+    white-space: nowrap;
+}
+
+/* === Source-exam picker === */
+.source-exam-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 12px;
+    border: none;
+    border-bottom: 1px solid var(--border, #f0f0f0);
+    background: none;
+    font-family: inherit;
+    font-size: 0.88rem;
+    text-align: start;
+    cursor: pointer;
+    flex-wrap: wrap;
+}
+
+.source-exam-row:last-child { border-bottom: none; }
+.source-exam-row:hover { background: var(--bg, #fafafa); }
+.source-exam-same { background: rgba(26, 35, 126, 0.05); }
+.source-exam-same:hover { background: rgba(26, 35, 126, 0.1); }
+
+.source-exam-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.source-exam-name {
+    font-weight: 600;
+    color: var(--text, #212121);
+    overflow-wrap: break-word;
+}
+
+.source-exam-group {
+    font-size: 0.78rem;
+    color: var(--primary);
+    overflow-wrap: break-word;
+}
+
+.source-exam-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.source-exam-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: var(--primary);
+    color: #fff;
+    white-space: nowrap;
+}
+
+.source-exam-count,
+.source-exam-date {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #888);
+    white-space: nowrap;
+}
+
+/* Empty-state call to action, scoped so the shared .empty-state used by the
+   exam list is untouched. */
+.empty-state-exam .empty-state-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
 .import-name {
     flex: 1;
     min-width: 120px;
