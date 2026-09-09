@@ -51,6 +51,11 @@ App.ExamList = (function () {
             App.showLoading();
             _exams = await App.Storage.getExamIndex();
         }
+        // Folders come from this trainer's stored preferences. Awaited here rather
+        // than relying on App.init having loaded them, because init skips the load
+        // when the first auth callback fires before the session is restored.
+        // Resolves instantly once loaded, so cached renders pay nothing.
+        await App.UserPrefs.ensureLoaded();
         var exams = _exams;
         var view = getView();
 

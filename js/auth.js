@@ -70,6 +70,9 @@ App.Auth = (function () {
     function signOut() {
         return App.auth.signOut().then(function () {
             currentUser = null;
+            // Drop the cached preferences so the next user to sign in on this
+            // device does not inherit the previous one's folders.
+            if (App.UserPrefs && App.UserPrefs.clear) App.UserPrefs.clear();
             window.location.hash = '#/login';
         });
     }

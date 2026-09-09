@@ -6,6 +6,7 @@ var App = window.App || {};
 
 App.UserPrefs = (function () {
     var _prefs = null;
+    var _loading = null;
 
     async function load() {
         try {
@@ -14,7 +15,28 @@ App.UserPrefs = (function () {
             console.error('UserPrefs.load failed:', e);
             _prefs = {};
         }
+        _loading = null;
+        return _prefs;
     }
+
+    // Await this before reading anything that must reflect what is stored.
+    //
+    // App.init only loads preferences when the very first auth callback already
+    // reports a signed-in user. Firebase can fire that callback with null while it
+    // is still restoring the persisted session, in which case init skipped the
+    // load and _prefs stayed null for the whole page load — folders read back as
+    // empty, and creating one then overwrote the stored list. Loading on demand
+    // removes that dependency on auth timing entirely.
+    //
+    // Concurrent callers share the one in-flight request, and once loaded this
+    // resolves immediately, so it is safe to await on every render.
+    function ensureLoaded() {
+        if (_prefs) return Promise.resolve(_prefs);
+        if (!_loading) _loading = load();
+        return _loading;
+    }
+
+    function isLoaded() { return _prefs !== null; }
 
     function getQuickTags(catKey) {
         if (!_prefs || !_prefs.quickTags) return [];
@@ -66,6 +88,22 @@ App.UserPrefs = (function () {
         return _prefs;
     }
 
+    // Every folder mutation goes through this first.
+    //
+    // A folder write replaces the whole stored list, so mutating before a load
+    // has told us what is already there would silently destroy the trainer's
+    // folders. Returning null makes each mutator a no-op in that state. The check
+    // has to happen here rather than at write time, because _cache() would by
+    // then have turned _prefs from null into {} and hidden the problem — and
+    // would also have made ensureLoaded() skip its read.
+    function _mutable() {
+        if (_prefs === null) {
+            console.error('preferences not loaded — folder change ignored');
+            return null;
+        }
+        return _prefs;
+    }
+
     // Persist in the background; the cache is already current when this is called.
     function _pushFolders() {
         var p = _cache();
@@ -73,19 +111,26 @@ App.UserPrefs = (function () {
             examFolders: p.examFolders || [],
             examFolderAssign: p.examFolderAssign || {}
         }).catch(function (e) {
+            // Surfaced, not just logged: a folder that silently fails to save
+            // looks exactly like a folder that saved and then vanished.
             console.error('folder save failed:', e);
+            if (typeof App.showToast === 'function') {
+                App.showToast(App.I18n.t('folderSaveFailed'));
+            }
         });
     }
 
     function saveFolders(folders, assignments) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return;
         p.examFolders = folders;
         if (assignments) p.examFolderAssign = assignments;
         _pushFolders();
     }
 
     function addFolder(name) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return null;
         if (!Array.isArray(p.examFolders)) p.examFolders = [];
         var maxOrder = -1;
         p.examFolders.forEach(function (f) {
@@ -108,7 +153,8 @@ App.UserPrefs = (function () {
     // the two numbers — that also heals folders whose orders had gone duplicate
     // or gappy, which a bare swap would leave broken forever.
     function moveFolder(folderId, delta) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return false;
         var sorted = getFolders();
         var from = -1;
         sorted.forEach(function (f, i) { if (f.id === folderId) from = i; });
@@ -124,7 +170,8 @@ App.UserPrefs = (function () {
     }
 
     function renameFolder(folderId, name) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return;
         (p.examFolders || []).forEach(function (f) {
             if (f.id === folderId) f.name = (name || '').trim();
         });
@@ -135,7 +182,8 @@ App.UserPrefs = (function () {
     // back to Unfiled instead of vanishing from a list that only renders folders
     // it knows about.
     function removeFolder(folderId) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return;
         p.examFolders = (p.examFolders || []).filter(function (f) { return f.id !== folderId; });
         var assign = p.examFolderAssign || {};
         Object.keys(assign).forEach(function (examId) {
@@ -149,7 +197,8 @@ App.UserPrefs = (function () {
     // knownExamIds (optional) prunes assignments for exams that no longer exist,
     // so a deleted exam can't leave the map growing forever.
     function setExamFolder(examId, folderId, knownExamIds) {
-        var p = _cache();
+        var p = _mutable();
+        if (!p) return;
         var assign = p.examFolderAssign || {};
         if (folderId) assign[examId] = folderId;
         else delete assign[examId];
@@ -167,10 +216,12 @@ App.UserPrefs = (function () {
 
     function getAll() { return _prefs || {}; }
 
-    function clear() { _prefs = null; }
+    function clear() { _prefs = null; _loading = null; }
 
     return {
         load: load,
+        ensureLoaded: ensureLoaded,
+        isLoaded: isLoaded,
         getQuickTags: getQuickTags,
         setQuickTags: setQuickTags,
         getFolders: getFolders,

@@ -143,16 +143,48 @@
     gap: 4px;
 }
 
+/* The pen toggle overlays a corner of the field rather than sitting beside it.
+   As a flex sibling it consumed ~34px of a grade column barely 200px wide, which
+   left the notes box noticeably cramped and made the button look like it was
+   floating mid-cell. */
 .field-with-drawing-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
+    position: relative;
 }
 
-.field-with-drawing-row > textarea,
-.field-with-drawing-row > .drawing-thumbnail-wrapper {
-    flex: 1;
+/* Descendant selectors, not direct-child: the autocomplete ghost overlay
+   reparents each grade textarea into a .textarea-with-ghost div at runtime
+   (exam-table.js), so a `>` selector here matches only until that wrapper
+   appears and then silently stops applying. */
+.field-with-drawing-row textarea,
+.field-with-drawing-row .drawing-thumbnail,
+.field-with-drawing-row .textarea-with-ghost,
+.field-with-drawing-row .drawing-thumbnail-wrapper {
+    width: 100%;
     min-width: 0;
+}
+
+.field-with-drawing-row .pen-toggle-btn {
+    position: absolute;
+    top: 2px;
+    /* Logical, so it lands top-left in the RTL layout and top-right in LTR —
+       either way the corner where a line of text ends, not where it starts. */
+    inset-inline-end: 2px;
+    /* Above the ghost-text mirror, which is itself absolutely positioned. */
+    z-index: 3;
+    margin: 0;
+    opacity: 0.9;
+}
+
+.field-with-drawing-row .pen-toggle-btn:hover,
+.field-with-drawing-row .pen-toggle-btn.active {
+    opacity: 1;
+}
+
+/* Keeps typed text clear of the button. The ghost mirror has to match the
+   textarea's padding exactly or the suggestion drifts out of alignment. */
+.field-with-drawing-row textarea,
+.field-with-drawing-row .textarea-ghost {
+    padding-inline-end: 32px;
 }
 
 .drawing-thumbnail-wrapper {
