@@ -264,6 +264,7 @@ App.I18n = (function () {
             moveFolderUp: 'הזז תיקייה למעלה',
             moveFolderDown: 'הזז תיקייה למטה',
             folderSaveFailed: 'שמירת התיקיות נכשלה',
+            folderLoadFailed: 'לא ניתן לטעון את התיקיות — נסה לרענן',
             // Grading views
             viewGrid: 'טבלה',
             viewByCategory: 'לפי קטגוריה',
@@ -569,6 +570,7 @@ App.I18n = (function () {
             moveFolderUp: 'Move folder up',
             moveFolderDown: 'Move folder down',
             folderSaveFailed: 'Could not save folders',
+            folderLoadFailed: 'Could not load folders — try refreshing',
             // Grading views
             viewGrid: 'Grid',
             viewByCategory: 'By category',

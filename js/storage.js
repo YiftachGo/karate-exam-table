@@ -1308,11 +1308,32 @@ App.Storage = (function () {
 
     // --- User preferences (per-trainer global settings: quick tags, etc.) ---
 
+    // Throws when there is no signed-in user rather than returning {}.
+    // "Not signed in yet" and "this trainer has no preferences" have to be
+    // distinguishable: the caller caches the result, and caching an empty object
+    // for the first case makes stored folders look deleted — and then lets the
+    // next write overwrite them.
     async function getUserPreferences() {
         var uid = App.Auth.getUserId();
-        if (!uid) return {};
+        if (!uid) throw new Error('not_signed_in');
         var snap = await App.db.collection('users').doc(uid).get();
         return snap.exists ? (snap.data().preferences || {}) : {};
+    }
+
+    // Live preferences for the signed-in trainer. Used instead of a one-shot read
+    // so folders created on one device appear on their others without a refresh,
+    // and so a read that failed once heals itself rather than leaving the cache
+    // stuck on stale or empty data.
+    // Returns an unsubscribe function; null when nobody is signed in.
+    function subscribeToUserPreferences(onChange, onError) {
+        var uid = App.Auth.getUserId();
+        if (!uid) return null;
+        return App.db.collection('users').doc(uid).onSnapshot(function (snap) {
+            onChange(snap.exists ? (snap.data().preferences || {}) : {});
+        }, function (err) {
+            console.error('preferences subscription failed:', err);
+            if (typeof onError === 'function') onError(err);
+        });
     }
 
     async function updateUserPreferences(patch) {
@@ -1472,6 +1493,7 @@ App.Storage = (function () {
         addTrainerById: addTrainerById,
         getKnownTrainers: getKnownTrainers,
         getUserPreferences: getUserPreferences,
+        subscribeToUserPreferences: subscribeToUserPreferences,
         updateUserPreferences: updateUserPreferences,
         findExamineeHistory: findExamineeHistory,
         searchPastExamineesByName: searchPastExamineesByName,

@@ -6,6 +6,8 @@ App.ExamList = (function () {
     // Last-loaded exam index. Feeds the class-name suggestions and lets the edit
     // modal open with the exam's current values without a re-read.
     var _exams = [];
+    var _prefsWatched = false;
+    var _warnedPrefs = false;
 
     // --- View state (per device, so cards on a desktop and a list on a phone) ---
     //
@@ -56,6 +58,23 @@ App.ExamList = (function () {
         // when the first auth callback fires before the session is restored.
         // Resolves instantly once loaded, so cached renders pay nothing.
         await App.UserPrefs.ensureLoaded();
+
+        // A failed load leaves preferences deliberately unloaded, so folders are
+        // hidden rather than silently replaced by an empty set. Say so once —
+        // otherwise it looks like the folders were deleted.
+        if (!App.UserPrefs.isLoaded() && !_warnedPrefs) {
+            _warnedPrefs = true;
+            App.showToast(t('folderLoadFailed'));
+        }
+
+        // Re-render when this trainer changes folders on another device.
+        if (!_prefsWatched) {
+            _prefsWatched = true;
+            App.UserPrefs.onChange(function () {
+                // Only while the exam list is actually on screen.
+                if (document.querySelector('.exam-list-page')) render({ useCache: true });
+            });
+        }
         var exams = _exams;
         var view = getView();
 

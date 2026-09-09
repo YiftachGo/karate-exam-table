@@ -7,36 +7,89 @@ var App = window.App || {};
 App.UserPrefs = (function () {
     var _prefs = null;
     var _loading = null;
+    var _unsub = null;
+    var _changeHandlers = [];
+    var _reportedLoadFailure = false;
 
-    async function load() {
-        try {
-            _prefs = await App.Storage.getUserPreferences();
-        } catch (e) {
-            console.error('UserPrefs.load failed:', e);
-            _prefs = {};
-        }
-        _loading = null;
-        return _prefs;
+    // Preferences arrive over a live subscription rather than a single read, so
+    // folders made on one device show up on this trainer's others without a
+    // refresh — that is the whole point of keeping them in Firestore instead of
+    // localStorage.
+    //
+    // A failed or premature read must NOT be cached. Leaving _prefs null keeps
+    // "we don't know yet" distinct from "there are none", so the next render
+    // retries and, crucially, every folder mutation refuses instead of writing an
+    // empty cache over the stored list.
+    function load() {
+        if (_loading) return _loading;
+
+        var attempt = new Promise(function (resolve) {
+            var settled = false;
+            function settle(value) {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            }
+            function fail() {
+                _prefs = null;
+                if (!_reportedLoadFailure) {
+                    _reportedLoadFailure = true;
+                    console.error('UserPrefs: preferences could not be loaded');
+                }
+                settle(null);
+            }
+
+            var unsub;
+            try {
+                unsub = App.Storage.subscribeToUserPreferences(function (prefs) {
+                    var changed = _prefs && JSON.stringify(_prefs) !== JSON.stringify(prefs);
+                    _prefs = prefs;
+                    _reportedLoadFailure = false;
+                    settle(_prefs);
+                    // Only notify on a genuine remote change — our own writes echo
+                    // back through this listener and must not trigger a re-render.
+                    if (changed) {
+                        _changeHandlers.forEach(function (h) {
+                            try { h(_prefs); } catch (e) { console.error(e); }
+                        });
+                    }
+                }, fail);
+            } catch (e) {
+                console.error('UserPrefs subscribe threw:', e);
+            }
+
+            // No subscription means nobody is signed in yet. Stay unloaded so the
+            // next call retries rather than caching an empty result.
+            if (!unsub) { fail(); return; }
+            _unsub = unsub;
+        });
+
+        _loading = attempt;
+        // Cleared only once settled, and only if this is still the current
+        // attempt. Clearing from inside the executor does not work: the
+        // assignment to _loading happens after the executor has already run, so
+        // it would put the resolved promise straight back and a later retry would
+        // return that stale result instead of re-subscribing.
+        attempt.then(function () {
+            if (_loading === attempt) _loading = null;
+        });
+        return attempt;
     }
 
-    // Await this before reading anything that must reflect what is stored.
-    //
-    // App.init only loads preferences when the very first auth callback already
-    // reports a signed-in user. Firebase can fire that callback with null while it
-    // is still restoring the persisted session, in which case init skipped the
-    // load and _prefs stayed null for the whole page load — folders read back as
-    // empty, and creating one then overwrote the stored list. Loading on demand
-    // removes that dependency on auth timing entirely.
-    //
-    // Concurrent callers share the one in-flight request, and once loaded this
-    // resolves immediately, so it is safe to await on every render.
+    // Await before reading anything that must reflect what is stored. Resolves
+    // instantly once loaded, so it is safe to await on every render.
     function ensureLoaded() {
         if (_prefs) return Promise.resolve(_prefs);
-        if (!_loading) _loading = load();
-        return _loading;
+        return load();
     }
 
     function isLoaded() { return _prefs !== null; }
+
+    // Lets a screen re-render when this trainer's preferences change on another
+    // device.
+    function onChange(handler) {
+        _changeHandlers.push(handler);
+    }
 
     function getQuickTags(catKey) {
         if (!_prefs || !_prefs.quickTags) return [];
@@ -99,6 +152,12 @@ App.UserPrefs = (function () {
     function _mutable() {
         if (_prefs === null) {
             console.error('preferences not loaded — folder change ignored');
+            // Told directly, because the refusal is a response to something the
+            // trainer just did. Without this, naming a new folder and pressing
+            // save would appear to do nothing at all.
+            if (typeof App.showToast === 'function') {
+                App.showToast(App.I18n.t('folderLoadFailed'));
+            }
             return null;
         }
         return _prefs;
@@ -216,12 +275,18 @@ App.UserPrefs = (function () {
 
     function getAll() { return _prefs || {}; }
 
-    function clear() { _prefs = null; _loading = null; }
+    function clear() {
+        if (_unsub) { try { _unsub(); } catch (e) {} _unsub = null; }
+        _prefs = null;
+        _loading = null;
+        _reportedLoadFailure = false;
+    }
 
     return {
         load: load,
         ensureLoaded: ensureLoaded,
         isLoaded: isLoaded,
+        onChange: onChange,
         getQuickTags: getQuickTags,
         setQuickTags: setQuickTags,
         getFolders: getFolders,
