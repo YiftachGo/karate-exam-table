@@ -16,6 +16,59 @@ App.ExamTable = (function () {
     var selectMode = false;
     var selectedExamineeIds = new Set();
 
+    // --- Grading view: grid / one category / one student ---
+    //
+    // A real exam moves both ways through the grid: the group performs a category
+    // together early on, then students perform individually later. The full grid
+    // is 15 categories x N students, so on the tablet used during an exam the cell
+    // you want is usually off-screen in both directions.
+    //
+    // Both focused views transpose the grid into a plain vertical list, which
+    // removes horizontal scrolling entirely — the thing that hurts most on a
+    // tablet. They emit the same `.grade-cell` wrapper as the grid, so every
+    // existing handler and the live updateGradeCells() refresh keep working.
+
+    // Not 'krt_examview' — that key already belongs to the exam list's card/list
+    // toggle, and reusing it would make the two screens fight over one value.
+    var VIEW_KEY = 'krt_gradeview';
+    var _view = null;          // 'grid' | 'category' | 'student'
+    var _focusCatKey = null;
+    var _focusExamineeId = null;
+
+    function getView() {
+        if (_view) return _view;
+        try {
+            var v = localStorage.getItem(VIEW_KEY);
+            _view = (v === 'category' || v === 'student') ? v : 'grid';
+        } catch (e) { _view = 'grid'; }
+        return _view;
+    }
+
+    function setView(v) {
+        _view = v;
+        try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+    }
+
+    // Which category/student you were on, per exam — a tablet that sleeps and
+    // reloads mid-exam should come back where you left it, not at the top.
+    function _focusKey() { return 'krt_gradefocus_' + currentExamId; }
+
+    function loadFocus() {
+        try {
+            var raw = JSON.parse(localStorage.getItem(_focusKey()) || '{}');
+            _focusCatKey = raw.catKey || null;
+            _focusExamineeId = raw.examineeId || null;
+        } catch (e) { _focusCatKey = null; _focusExamineeId = null; }
+    }
+
+    function saveFocus() {
+        try {
+            localStorage.setItem(_focusKey(), JSON.stringify({
+                catKey: _focusCatKey, examineeId: _focusExamineeId
+            }));
+        } catch (e) {}
+    }
+
     // --- Draft / private mode helpers ---
 
     function renderDraftToggle() {
@@ -60,6 +113,9 @@ App.ExamTable = (function () {
 
     async function render(examId) {
         currentExamId = examId;
+        // Resume the category/student this exam was left on, so a tablet that
+        // reloaded mid-exam comes back in place.
+        loadFocus();
         var container = document.getElementById('app');
         App.showLoading();
 
@@ -110,6 +166,12 @@ App.ExamTable = (function () {
         var trainerNames = exam.trainerNames || {};
         var trainerIds = exam.trainerIds || [];
         var otherTrainers = trainerIds.filter(function (id) { return id !== currentUserId; });
+        var view = getView();
+        var cellCtx = {
+            currentUserId: currentUserId,
+            otherTrainers: otherTrainers,
+            trainerNames: trainerNames
+        };
 
         var html = '<div class="exam-table-page">';
         html += '<button class="back-btn" id="btn-back-list">&larr; ' + t('back') + '</button>';
@@ -120,8 +182,13 @@ App.ExamTable = (function () {
         html += '<div class="toolbar-spacer"></div>';
         html += '<button class="btn btn-primary" id="btn-add-examinee">+ ' + t('addExaminee') + '</button>';
         html += '<button class="btn btn-outline" id="btn-general-remarks">' + t('generalRemarks') + '</button>';
-        html += '<button class="btn btn-outline' + (selectMode ? ' active' : '') + '" id="btn-select-mode">' + (selectMode ? t('exitSelectMode') : t('selectMode')) + '</button>';
+        // Selecting students to bulk-grade is a grid concept — there are no student
+        // columns to tick in the focused views.
+        if (view === 'grid') {
+            html += '<button class="btn btn-outline' + (selectMode ? ' active' : '') + '" id="btn-select-mode">' + (selectMode ? t('exitSelectMode') : t('selectMode')) + '</button>';
+        }
         html += renderDraftToggle();
+        html += renderViewSwitch(view);
 
         // Manage Test dropdown — collapses import/export/share/invite.
         // Note two distinct imports: "import-from-exam" pulls students from another
@@ -163,6 +230,10 @@ App.ExamTable = (function () {
             html += '<button class="btn btn-outline" id="btn-empty-import-exam">' + t('importFromExam') + '</button>';
             html += '</div>';
             html += '</div>';
+        } else if (view === 'category') {
+            html += renderCategoryFocus(examinees, categories, cellCtx);
+        } else if (view === 'student') {
+            html += renderStudentFocus(examinees, categories, cellCtx);
         } else {
             html += '<div class="table-wrapper">';
             html += '<table class="grading-table">';
@@ -230,7 +301,7 @@ App.ExamTable = (function () {
 
         // Bulk action bar mount point — actual contents written by renderBulkBar()
         // after the table is in the DOM, so toggling selections doesn't re-render.
-        if (selectMode) {
+        if (selectMode && view === 'grid') {
             html += '<div class="bulk-action-bar-host" id="bulk-action-bar-host"></div>';
         }
 
@@ -244,6 +315,241 @@ App.ExamTable = (function () {
         renderBulkBar();
         // Lazy-attach autocomplete to grade textareas once the index is built
         attachAutocompleteWhenReady();
+    }
+
+    function renderViewSwitch(view) {
+        var t = App.I18n.t;
+        var segs = [
+            { key: 'grid', icon: '&#9638;', label: t('viewGrid') },
+            { key: 'category', icon: '&#9776;', label: t('viewByCategory') },
+            { key: 'student', icon: '&#128100;', label: t('viewByStudent') }
+        ];
+        var html = '<div class="grade-view-switch">';
+        segs.forEach(function (s) {
+            html += '<button class="grade-view-seg' + (view === s.key ? ' active' : '') +
+                '" data-gradeview="' + s.key + '" title="' + s.label + '">' +
+                s.icon + ' <span class="grade-view-label">' + s.label + '</span></button>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    // --- Focused views ---
+
+    // How many of `items` already carry a grade from this trainer, so the header can
+    // say "8 / 12" — during an exam the useful question is what is still missing.
+    function _gradedCount(pairs) {
+        var uid = App.Auth.getUserId();
+        var n = 0;
+        pairs.forEach(function (p) {
+            var g = (cachedGrades[p.examineeId] || {})[uid];
+            if (!g) return;
+            var v = g[p.catKey];
+            var mark = g[p.catKey + '_mark'];
+            var draw = g[p.catKey + '_drawing'];
+            if ((v && String(v).trim()) || mark || draw) n++;
+        });
+        return n;
+    }
+
+    // Shared shell: big prev/next either side of a native <select> for jumping.
+    // A native picker is the most reliable touch control here — the list can be 15
+    // categories or 30 students, and the OS renders it as a proper scrollable sheet.
+    function _focusNav(opts) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var html = '<div class="focus-nav">';
+        html += '<button class="btn focus-nav-btn" id="focus-prev"' +
+            (opts.index <= 0 ? ' disabled' : '') + ' title="' + t('previous') + '">&#8249;</button>';
+        html += '<div class="focus-nav-mid">';
+        html += '<select id="focus-select" class="focus-select">';
+        opts.items.forEach(function (it, i) {
+            html += '<option value="' + esc(it.value) + '"' + (i === opts.index ? ' selected' : '') + '>' +
+                esc(it.label) + '</option>';
+        });
+        html += '</select>';
+        html += '<div class="focus-nav-meta">';
+        html += '<span class="focus-position">' + (opts.index + 1) + ' / ' + opts.items.length + '</span>';
+        html += '<span class="focus-progress' + (opts.graded === opts.total ? ' complete' : '') + '">' +
+            opts.graded + ' / ' + opts.total + ' ' + t('gradedCount') + '</span>';
+        html += '</div>';
+        html += '</div>';
+        html += '<button class="btn focus-nav-btn" id="focus-next"' +
+            (opts.index >= opts.items.length - 1 ? ' disabled' : '') + ' title="' + t('next') + '">&#8250;</button>';
+        html += '</div>';
+        return html;
+    }
+
+    // Emits the same `.grade-cell` wrapper the grid uses, so the existing handlers
+    // and updateGradeCells() bind to these identically.
+    function _focusCell(ex, cat, ctx) {
+        var html = '<div class="grade-cell focus-cell" data-examinee="' + ex.id +
+            '" data-category="' + cat.key + '">';
+        if (cat.type === 'passfail') {
+            html += renderPassFailCell(ex.id, cat.key, ctx.currentUserId, ctx.otherTrainers, ctx.trainerNames);
+        } else {
+            html += renderGradeCell(ex.id, cat.key, ctx.currentUserId, ctx.otherTrainers, ctx.trainerNames, cat);
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // One category, every student as a row.
+    function renderCategoryFocus(examinees, categories, ctx) {
+        var t = App.I18n.t;
+        var lang = App.I18n.getLang();
+        var esc = App.Utils.escapeHtml;
+
+        var idx = 0;
+        categories.forEach(function (c, i) { if (c.key === _focusCatKey) idx = i; });
+        var cat = categories[idx];
+        if (!cat) return '<div class="empty-state"><p>' + t('noCategories') + '</p></div>';
+        // Persist the resolved key, not just explicit navigation — otherwise
+        // switching into this view and reloading would lose your place.
+        _focusCatKey = cat.key;
+        saveFocus();
+
+        var pairs = examinees.map(function (ex) {
+            return { examineeId: ex.id, catKey: cat.key };
+        });
+
+        var html = '<div class="focus-view" data-focus="category">';
+        html += _focusNav({
+            index: idx,
+            items: categories.map(function (c) { return { value: c.key, label: c[lang] || c.key }; }),
+            graded: _gradedCount(pairs),
+            total: examinees.length
+        });
+
+        html += '<div class="focus-list">';
+        examinees.forEach(function (ex) {
+            var rankColor = App.Utils.getRankColorClass(ex.targetRank || ex.rank);
+            html += '<div class="focus-row ' + rankColor + '">';
+            html += '<div class="focus-row-head">';
+            if (ex.photoUrl) {
+                html += '<img src="' + ex.photoUrl + '" class="focus-row-thumb" alt="">';
+            }
+            html += '<div class="focus-row-titles">';
+            html += '<a href="#/exam/' + currentExamId + '/examinee/' + ex.id + '" class="focus-row-name">' +
+                esc(ex.firstName + ' ' + ex.lastName) + '</a>';
+            if (ex.rank) html += '<span class="focus-row-sub">' + esc(ex.rank) + '</span>';
+            html += '</div>';
+            html += '</div>';
+            html += _focusCell(ex, cat, ctx);
+            html += '</div>';
+        });
+        html += '</div></div>';
+        return html;
+    }
+
+    // One student, every category as a row.
+    function renderStudentFocus(examinees, categories, ctx) {
+        var t = App.I18n.t;
+        var lang = App.I18n.getLang();
+        var esc = App.Utils.escapeHtml;
+
+        var idx = 0;
+        examinees.forEach(function (e, i) { if (e.id === _focusExamineeId) idx = i; });
+        var ex = examinees[idx];
+        if (!ex) return '';
+        _focusExamineeId = ex.id;
+        saveFocus();
+
+        var pairs = categories.map(function (c) {
+            return { examineeId: ex.id, catKey: c.key };
+        });
+
+        var html = '<div class="focus-view" data-focus="student">';
+        html += _focusNav({
+            index: idx,
+            items: examinees.map(function (e) {
+                return { value: e.id, label: e.firstName + ' ' + e.lastName };
+            }),
+            graded: _gradedCount(pairs),
+            total: categories.length
+        });
+
+        // The student being graded, kept visible above the categories.
+        var rankColor = App.Utils.getRankColorClass(ex.targetRank || ex.rank);
+        html += '<div class="focus-subject ' + rankColor + '">';
+        if (ex.photoUrl) html += '<img src="' + ex.photoUrl + '" class="focus-subject-thumb" alt="">';
+        html += '<div class="focus-row-titles">';
+        html += '<a href="#/exam/' + currentExamId + '/examinee/' + ex.id + '" class="focus-subject-name">' +
+            esc(ex.firstName + ' ' + ex.lastName) + '</a>';
+        html += '<span class="focus-row-sub">';
+        if (ex.rank) html += esc(ex.rank);
+        if (ex.targetRank && ex.targetRank !== ex.rank) html += ' → ' + esc(ex.targetRank);
+        html += '</span>';
+        html += '</div>';
+        html += '<button class="btn btn-sm export-rec-btn" data-id="' + ex.id + '" title="' +
+            t('exportRecommendation') + '">&#128196;</button>';
+        html += '</div>';
+
+        html += '<div class="focus-list">';
+        categories.forEach(function (cat) {
+            html += '<div class="focus-row">';
+            html += '<div class="focus-row-head">';
+            html += '<div class="focus-row-titles">';
+            html += '<span class="focus-row-name">' + esc(cat[lang] || cat.key) + '</span>';
+            html += '</div>';
+            html += '</div>';
+            html += _focusCell(ex, cat, ctx);
+            html += '</div>';
+        });
+        html += '</div></div>';
+        return html;
+    }
+
+    function bindViewSwitch() {
+        document.querySelectorAll('.grade-view-seg').forEach(function (seg) {
+            seg.addEventListener('click', function () {
+                var next = seg.dataset.gradeview;
+                if (next === getView()) return;
+                // Leaving the grid abandons any column selection, since the focused
+                // views have no checkboxes to keep it visible or actionable.
+                if (next !== 'grid' && selectMode) {
+                    selectMode = false;
+                    selectedExamineeIds.clear();
+                }
+                setView(next);
+                renderTable();
+            });
+        });
+    }
+
+    function bindFocusNav() {
+        var view = getView();
+        if (view === 'grid') return;
+        var examinees = getSortedExaminees();
+        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var list = view === 'category' ? categories : examinees;
+        var currentId = view === 'category' ? _focusCatKey : _focusExamineeId;
+
+        function idOf(item) { return view === 'category' ? item.key : item.id; }
+
+        function goTo(id) {
+            if (view === 'category') _focusCatKey = id;
+            else _focusExamineeId = id;
+            saveFocus();
+            renderTable();
+            // Back to the top: the point of stepping is to start the next
+            // category or student from its first row, not mid-list.
+            window.scrollTo(0, 0);
+        }
+
+        function step(delta) {
+            var i = 0;
+            list.forEach(function (item, n) { if (idOf(item) === currentId) i = n; });
+            var target = list[i + delta];
+            if (target) goTo(idOf(target));
+        }
+
+        var prev = document.getElementById('focus-prev');
+        if (prev) prev.addEventListener('click', function () { step(-1); });
+        var next = document.getElementById('focus-next');
+        if (next) next.addEventListener('click', function () { step(1); });
+        var sel = document.getElementById('focus-select');
+        if (sel) sel.addEventListener('change', function () { goTo(sel.value); });
     }
 
     // Build and update the floating bulk-action bar in place — without re-rendering
@@ -1159,6 +1465,9 @@ App.ExamTable = (function () {
         // Labeled sort button in the category column header
         var sortBtn = document.getElementById('btn-cat-sort');
         if (sortBtn) sortBtn.addEventListener('click', showSortModal);
+
+        bindViewSwitch();
+        bindFocusNav();
 
         // Draft/Published two-segment toggle
         document.querySelectorAll('.draft-toggle-seg').forEach(function (seg) {
