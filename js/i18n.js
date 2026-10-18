@@ -157,6 +157,8 @@ App.I18n = (function () {
             syncStudentDirectory: 'סנכרן ספריית תלמידים',
             directorySynced: 'ספריית התלמידים סונכרנה',
             directorySyncing: 'מסנכרן ספריית תלמידים...',
+            directoryNoDob: 'ללא תאריך לידה — לא יזוהו כתלמידים חוזרים',
+            directoryRuleMissing: 'תלמידים חוזרים לא יזוהו: חסר כלל הרשאה ל-studentDirectory ב-Firebase',
             // Dojo / class groups
             dojo: 'דוג\'ו',
             classGroup: 'קבוצה',
@@ -468,6 +470,8 @@ App.I18n = (function () {
             syncStudentDirectory: 'Sync Student Directory',
             directorySynced: 'Student directory synced',
             directorySyncing: 'Syncing student directory...',
+            directoryNoDob: 'with no date of birth — won\'t be recognised as returning',
+            directoryRuleMissing: 'Returning students won\'t be recognised: the studentDirectory rule is missing in Firebase',
             // Dojo / class groups
             dojo: 'Dojo',
             classGroup: 'Class',

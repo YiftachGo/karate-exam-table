@@ -98,7 +98,27 @@ App.ExamTable = (function () {
             updateDraftBadge();
         } else {
             App.Storage.updateGrade(currentExamId, examineeId, catKey, value);
+            // A rank decision changes the belt a returning student will be offered
+            // next time. Draft grades are deliberately excluded — not final yet.
+            if (catKey.indexOf('rank_approval') === 0) scheduleDirectorySync();
         }
+    }
+
+    // The exam as it stands right now, in the shape getExam() returns, for the
+    // student-directory sync.
+    function _liveExamForSync() {
+        if (!cachedExam || !currentExamId) return null;
+        return {
+            id: currentExamId,
+            date: cachedExam.date || '',
+            examinees: cachedExaminees || {},
+            allGrades: cachedGrades || {}
+        };
+    }
+
+    function scheduleDirectorySync() {
+        if (!App.DirectorySync || !currentExamId) return;
+        App.DirectorySync.scheduleExam(currentExamId, _liveExamForSync);
     }
 
     function updateDraftBadge() {
@@ -136,6 +156,11 @@ App.ExamTable = (function () {
 
         renderTable();
 
+        // Keep the returning-student directory current without anyone pressing
+        // "Sync". Uses what getExam() already loaded; a no-op when nothing changed
+        // since this device last synced the exam.
+        if (App.DirectorySync) App.DirectorySync.syncExam(cachedExam);
+
         unsubGrades = App.Storage.subscribeToGrades(examId, function (allGrades) {
             cachedGrades = allGrades;
             updateGradeCells();
@@ -144,6 +169,9 @@ App.ExamTable = (function () {
         unsubExaminees = App.Storage.subscribeToExaminees(examId, function (examinees) {
             cachedExaminees = examinees;
             renderTable();
+            // Includes students who just registered themselves through the invite
+            // link — syncing them now is what lets them be found at their next exam.
+            scheduleDirectorySync();
         });
 
         return cleanup;
@@ -1015,16 +1043,20 @@ App.ExamTable = (function () {
         try {
             var res = await App.Storage.syncStudentDirectoryForExam(currentExamId);
             var msg = t('directorySynced') + ' (' + res.synced + '/' + res.total + ')';
+            // Students with no birthdate cannot be keyed, so they will never be
+            // recognised as returning. Said on screen, not just logged, because the
+            // fix is the trainer filling those dates in.
+            if (res.noDob) msg += ' · ' + res.noDob + ' ' + t('directoryNoDob');
             App.showToast(msg);
-            if (res.skipped) {
-                // Skipped students are missing a name or a date of birth, so they
-                // have no usable directory key.
-                console.info('directory sync skipped ' + res.skipped +
-                    ' examinee(s) with no name or date of birth');
-            }
         } catch (err) {
             console.error('directory sync failed:', err);
-            App.showToast(t('error') + ': ' + err.message);
+            if (err && err.code === 'permission-denied') {
+                // Shown every time here: unlike the automatic syncs, this is the
+                // trainer asking directly and must always get an answer.
+                App.showToast(t('directoryRuleMissing'));
+            } else {
+                App.showToast(t('error') + ': ' + err.message);
+            }
         }
     }
 

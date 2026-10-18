@@ -52,6 +52,9 @@ App.ExamList = (function () {
         if (!useCache) {
             App.showLoading();
             _exams = await App.Storage.getExamIndex();
+            // Background, at most once a day per device: makes sure students from
+            // every past exam can be recognised when they register for a new one.
+            if (App.DirectorySync) App.DirectorySync.backfill();
         }
         // Folders come from this trainer's stored preferences. Awaited here rather
         // than relying on App.init having loaded them, because init skips the load

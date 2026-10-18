@@ -47,10 +47,14 @@ App.ExamineeDetail = (function () {
         html += '</div>';
 
         html += '<div class="form-row">';
-        html += formGroup('dateOfBirth', t('dateOfBirth'), 'date', ex.dateOfBirth);
+        // Dates normalized for display. Records imported from a spreadsheet before
+        // the import was fixed hold Excel serials ("40640"), which a date input
+        // shows as blank — and saving the form then wrote that blank back,
+        // erasing the date. Normalizing here means opening and saving repairs them.
+        html += formGroup('dateOfBirth', t('dateOfBirth'), 'date', App.Utils.normalizeDate(ex.dateOfBirth));
         html += '<div class="form-group">';
         html += '<label>' + t('age') + '</label>';
-        html += '<input type="text" id="field-age" value="' + App.Utils.calculateAge(ex.dateOfBirth) + '" readonly class="readonly-field">';
+        html += '<input type="text" id="field-age" value="' + App.Utils.calculateAge(App.Utils.normalizeDate(ex.dateOfBirth)) + '" readonly class="readonly-field">';
         html += '</div>';
         html += '</div>';
 
@@ -62,8 +66,8 @@ App.ExamineeDetail = (function () {
         html += clubSelectGroup(t('club'), ex.club || '');
 
         html += '<div class="form-row">';
-        html += formGroup('trainingStartDate', t('trainingStartDate'), 'date', ex.trainingStartDate);
-        html += formGroup('lastExamDate', t('lastExamDate'), 'date', ex.lastExamDate);
+        html += formGroup('trainingStartDate', t('trainingStartDate'), 'date', App.Utils.normalizeDate(ex.trainingStartDate));
+        html += formGroup('lastExamDate', t('lastExamDate'), 'date', App.Utils.normalizeDate(ex.lastExamDate));
         html += '</div>';
 
         html += formGroup('trainingsPerWeek', t('trainingsPerWeek'), 'number', ex.trainingsPerWeek);
@@ -143,7 +147,7 @@ App.ExamineeDetail = (function () {
             Array.isArray(ex.beltTrainings) ? ex.beltTrainings : []
         );
         App.Utils.bindRankShowAll(container);
-        bindEvents(examId, examineeId);
+        bindEvents(examId, examineeId, exam);
     }
 
     // Dojo list lives in App.Utils.CLUBS — see buildClubSelect there.
@@ -162,13 +166,16 @@ App.ExamineeDetail = (function () {
         return html;
     }
 
-    function bindEvents(examId, examineeId) {
+    // `exam` is passed in rather than read from render()'s scope — it is a local
+    // there, and referencing it from here threw "exam is not defined" on every
+    // Save click, so no student's details could be saved at all.
+    function bindEvents(examId, examineeId, exam) {
         document.getElementById('btn-back-table').addEventListener('click', function () {
             App.Router.navigate('#/exam/' + examId);
         });
 
         document.getElementById('btn-save-examinee').addEventListener('click', function () {
-            saveExaminee(examId, examineeId, exam.date || '');
+            saveExaminee(examId, examineeId, (exam && exam.date) || '');
         });
 
         document.getElementById('field-dateOfBirth').addEventListener('change', function () {

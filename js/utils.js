@@ -391,10 +391,55 @@ App.Utils = (function () {
         return looseName(s).replace(/[וי]/g, '');
     }
 
-    // Date of birth reduced to digits only, so '2011-04-07' and '07/04/2011'
-    // never produce different keys for the same person.
+    function _isoDate(y, mo, d) {
+        if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+        // Reject impossible dates like 31/02 instead of letting them roll over.
+        var dt = new Date(Date.UTC(y, mo - 1, d));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+        return y + '-' + (mo < 10 ? '0' : '') + mo + '-' + (d < 10 ? '0' : '') + d;
+    }
+
+    // Any date this app might hold, as YYYY-MM-DD — the format <input type="date">
+    // reads and writes. Returns '' for anything it cannot interpret with confidence.
+    //
+    // Needed because spreadsheet imports stored dates verbatim. SheetJS hands Excel
+    // date cells back as serial numbers, so a birthdate came through as "40640"
+    // rather than 2011-04-07: blank in every date field, and impossible to match
+    // against the date a returning student types. Text dates arrive day-first
+    // (07/04/2011, 7.4.2011) as is usual here.
+    function normalizeDate(value) {
+        if (value == null) return '';
+        var s = String(value).trim();
+        if (!s) return '';
+
+        var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (m) return _isoDate(+m[1], +m[2], +m[3]);
+
+        // Excel serial: days since 1899-12-30. Bounded to 1902–2118 so a stray
+        // small number is never mistaken for a date.
+        if (/^\d+(\.\d+)?$/.test(s)) {
+            var n = Math.floor(parseFloat(s));
+            if (n < 1000 || n > 80000) return '';
+            var dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+            return _isoDate(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+        }
+
+        m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+        if (m) {
+            var a = +m[1], b = +m[2], y = +m[3];
+            if (y < 100) y += (y > 30 ? 1900 : 2000);
+            // Day first, unless the second number can only be a day (e.g. 4/23/2011).
+            if (b > 12 && a <= 12) return _isoDate(y, a, b);
+            return _isoDate(y, b, a);
+        }
+        return '';
+    }
+
+    // Date of birth as a key fragment: normalized first, then reduced to digits, so
+    // the same birthday always yields the same key however it was entered or imported.
     function dobDigits(dob) {
-        return (dob || '').replace(/\D/g, '');
+        var iso = normalizeDate(dob);
+        return iso ? iso.replace(/\D/g, '') : '';
     }
 
     // Clubs come from a fixed dropdown, but normalize anyway so a stored value
@@ -405,12 +450,8 @@ App.Utils = (function () {
 
     // Identity key for one person, used to spot a student who is already in an
     // exam before importing them again. Names are folded, so 'בן-אור' and
-    // 'בן אור' match; the birthdate is reduced to digits, which absorbs
-    // separators but NOT a different field order — '2011-04-07' and '07/04/2011'
-    // still differ. Everything entered in the app comes from <input type="date">
-    // and is therefore always YYYY-MM-DD; only a spreadsheet import could supply
-    // another order, and guessing between D/M and M/D would be worse than missing
-    // the match.
+    // 'בן אור' match; the birthdate goes through normalizeDate, so '2011-04-07',
+    // '07/04/2011' and an Excel serial for that day all key the same.
     //
     // Deliberately stronger than findExamineeHistory's own keyFor, which compares
     // raw birthdate strings — that one is left alone, since changing how an
@@ -481,6 +522,7 @@ App.Utils = (function () {
         getRankColorClass: getRankColorClass,
         looseName: looseName,
         skeletonName: skeletonName,
+        normalizeDate: normalizeDate,
         dobDigits: dobDigits,
         looseClub: looseClub
     };

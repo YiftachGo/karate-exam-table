@@ -102,7 +102,13 @@ App.InvitePage = (function () {
     // `prefill` is optional and pre-populates the fields.
     function buildRegistrationFormHtml(titleHeader, subtitle, submitLabel, prefill) {
         var t = App.I18n.t;
-        prefill = prefill || {};
+        // Copied, with dates normalized: a record imported from a spreadsheet may
+        // hold an Excel serial, which a date input shows as blank and which the
+        // student's save would then erase.
+        prefill = Object.assign({}, prefill || {});
+        ['dateOfBirth', 'trainingStartDate', 'lastExamDate'].forEach(function (k) {
+            if (prefill[k]) prefill[k] = App.Utils.normalizeDate(prefill[k]);
+        });
 
         var html = '<div class="invite-page">';
         html += '<div class="invite-card invite-card-wide">';

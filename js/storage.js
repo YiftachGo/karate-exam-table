@@ -694,7 +694,9 @@ App.Storage = (function () {
         opts = opts || {};
         var first = (examineeData.firstName || '').trim();
         var last = (examineeData.lastName || '').trim();
-        var dob = examineeData.dateOfBirth || '';
+        // Normalized so a spreadsheet-imported birthdate (stored as an Excel serial
+        // or D/M/Y text) keys the same as the YYYY-MM-DD a student types.
+        var dob = App.Utils.normalizeDate(examineeData.dateOfBirth);
         var club = examineeData.club || '';
 
         // Without a name and a birthdate there is no usable key.
@@ -725,9 +727,9 @@ App.Storage = (function () {
             dateOfBirth: dob,
             club: club,
             currentRank: resolvedRank,
-            trainingStartDate: examineeData.trainingStartDate || '',
+            trainingStartDate: App.Utils.normalizeDate(examineeData.trainingStartDate),
             trainingsPerWeek: examineeData.trainingsPerWeek || '',
-            lastExamDate: sourceExamDate || examineeData.lastExamDate || '',
+            lastExamDate: sourceExamDate || App.Utils.normalizeDate(examineeData.lastExamDate),
             beltTrainings: Array.isArray(examineeData.beltTrainings) ? examineeData.beltTrainings : [],
             gasshukus: Array.isArray(examineeData.gasshukus) ? examineeData.gasshukus : [],
             photoUrl: examineeData.photoUrl || '',
@@ -764,9 +766,49 @@ App.Storage = (function () {
         return true;
     }
 
-    // Walk one exam and upsert a directory entry per examinee, resolving each
-    // student's rank from that exam's recorded result. Doubles as the one-time
-    // backfill for exams that predate this feature.
+    // Upsert a directory entry for every examinee in one exam.
+    //   examinees        { examineeId: data }
+    //   gradesByExaminee { examineeId: [gradeDoc, ...] }
+    //
+    // A permission error aborts the whole run and is rethrown with code
+    // 'permission-denied'. It means the studentDirectory Firestore rule is missing
+    // or wrong, so every other student would fail identically — and it must reach
+    // the trainer. It used to be caught per student and counted as "skipped",
+    // which made a sync that wrote nothing look like a sync that ran.
+    //
+    // noDob counts students with no usable birthdate. They cannot be keyed, so a
+    // returning student can never find those records; the caller reports it so the
+    // trainer can fill the dates in.
+    async function _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee) {
+        var ids = Object.keys(examinees || {});
+        var synced = 0, skipped = 0, noDob = 0;
+        for (var i = 0; i < ids.length; i++) {
+            var id = ids[i];
+            var data = examinees[id] || {};
+            if (!App.Utils.dobDigits(data.dateOfBirth)) { noDob++; skipped++; continue; }
+            var rank = resolveCurrentRank(gradesByExaminee[id], data);
+            try {
+                var ok = await upsertStudentDirectory(data, {
+                    currentRank: rank,
+                    sourceExamId: examId,
+                    sourceExamineeId: id,
+                    sourceExamDate: examDate
+                });
+                if (ok) synced++; else skipped++;
+            } catch (e) {
+                if (e && e.code === 'permission-denied') {
+                    var denied = new Error('studentDirectory permission denied');
+                    denied.code = 'permission-denied';
+                    throw denied;
+                }
+                console.warn('directory sync failed for examinee', id, e);
+                skipped++;
+            }
+        }
+        return { synced: synced, skipped: skipped, noDob: noDob, total: ids.length };
+    }
+
+    // Loads one exam and syncs it. Used by the manual "Sync" menu action.
     async function syncStudentDirectoryForExam(examId) {
         var examDoc = await App.db.collection('exams').doc(examId).get();
         if (!examDoc.exists) throw new Error('not_found');
@@ -774,6 +816,8 @@ App.Storage = (function () {
 
         var examineesSnap = await App.db.collection('exams').doc(examId)
             .collection('examinees').get();
+        var examinees = {};
+        examineesSnap.docs.forEach(function (d) { examinees[d.id] = d.data(); });
 
         // One read of the whole grades subcollection, then index by examinee.
         var gradesSnap = await App.db.collection('exams').doc(examId)
@@ -785,25 +829,17 @@ App.Storage = (function () {
             gradesByExaminee[examineeId].push(d.data());
         });
 
-        var synced = 0, skipped = 0;
-        for (var i = 0; i < examineesSnap.docs.length; i++) {
-            var d = examineesSnap.docs[i];
-            var data = d.data();
-            var rank = resolveCurrentRank(gradesByExaminee[d.id], data);
-            var ok = false;
-            try {
-                ok = await upsertStudentDirectory(data, {
-                    currentRank: rank,
-                    sourceExamId: examId,
-                    sourceExamineeId: d.id,
-                    sourceExamDate: examDate
-                });
-            } catch (e) {
-                console.warn('directory sync failed for examinee', d.id, e);
-            }
-            if (ok) synced++; else skipped++;
-        }
-        return { synced: synced, skipped: skipped, total: examineesSnap.docs.length };
+        return _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee);
+    }
+
+    // Syncs an exam already loaded by getExam() — its examinees and allGrades are
+    // in memory, so this costs no reads beyond the directory's own.
+    async function syncStudentDirectoryFromLoadedExam(exam) {
+        var gradesByExaminee = {};
+        Object.keys(exam.allGrades || {}).forEach(function (exId) {
+            gradesByExaminee[exId] = Object.values(exam.allGrades[exId] || {});
+        });
+        return _syncDirectoryEntries(exam.id, exam.date || '', exam.examinees || {}, gradesByExaminee);
     }
 
     // Creates this exam's examinee record for a recognised returning student,
@@ -1131,6 +1167,9 @@ App.Storage = (function () {
         'formSubmitted', 'theoryExamGrade'
     ];
 
+    // The STUDENT_COLUMNS that hold a date and are shown in <input type="date">.
+    var IMPORT_DATE_COLUMNS = ['dateOfBirth', 'trainingStartDate', 'lastExamDate'];
+
     function buildStudentRows(exam) {
         var header = STUDENT_COLUMNS.map(function (k) { return App.I18n.t(k); });
         var rows = [header];
@@ -1275,6 +1314,14 @@ App.Storage = (function () {
                 if (key) data[key] = row[idx] == null ? '' : String(row[idx]).trim();
             });
             if (!data.firstName) continue;
+
+            // Excel hands date cells back as serial numbers ("40640"), and text
+            // dates arrive day-first. Store YYYY-MM-DD so the date fields show them
+            // and a returning student's typed birthdate can match. Anything that
+            // will not parse is kept as given rather than silently dropped.
+            IMPORT_DATE_COLUMNS.forEach(function (k) {
+                if (data[k]) data[k] = App.Utils.normalizeDate(data[k]) || data[k];
+            });
 
             var newRef = examRef.collection('examinees').doc();
             batch.set(newRef, Object.assign({}, data, {
@@ -1477,6 +1524,7 @@ App.Storage = (function () {
         lookupStudentDirectoryByClub: lookupStudentDirectoryByClub,
         upsertStudentDirectory: upsertStudentDirectory,
         syncStudentDirectoryForExam: syncStudentDirectoryForExam,
+        syncStudentDirectoryFromLoadedExam: syncStudentDirectoryFromLoadedExam,
         resolveCurrentRank: resolveCurrentRank,
         resolveExamOutcome: resolveExamOutcome,
         selfRegisterReturning: selfRegisterReturning,
