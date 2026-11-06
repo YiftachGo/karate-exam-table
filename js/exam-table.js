@@ -248,6 +248,8 @@ App.ExamTable = (function () {
             html += '</div>';
         }
 
+        html += renderDuplicateBanner(examinees);
+
         if (examinees.length === 0) {
             // A fresh exam is exactly where a trainer looks for "bring last term's
             // students over", so surface it here rather than only in the menu.
@@ -1464,8 +1466,194 @@ App.ExamTable = (function () {
         update();
     }
 
+    // --- Possible duplicates ---
+    //
+    // The invite link refuses a second registration of the exact same name and
+    // birthdate, but it cannot catch a spelling variant ("Yossi"/"Yosi"), a
+    // missing birthdate, or a trainer adding someone who also registered. Those
+    // are flagged here for a trainer to merge or dismiss.
+
+    var _GRADE_META = { trainerId: 1, trainerName: 1, updatedAt: 1 };
+
+    function hasGrades(examineeId) {
+        var byTrainer = cachedGrades[examineeId] || {};
+        return Object.keys(byTrainer).some(function (tid) {
+            var g = byTrainer[tid] || {};
+            return Object.keys(g).some(function (k) {
+                if (_GRADE_META[k]) return false;
+                var v = g[k];
+                if (v == null) return false;
+                if (typeof v === 'string') return v.trim() !== '';
+                return true;
+            });
+        });
+    }
+
+    function duplicateGroups(examinees) {
+        return App.Utils.findDuplicateGroups(examinees || getSortedExaminees(),
+            (cachedExam && cachedExam.notDuplicates) || []);
+    }
+
+    function renderDuplicateBanner(examinees) {
+        var groups = duplicateGroups(examinees);
+        if (!groups.length) return '';
+        var t = App.I18n.t;
+        return '<div class="dup-banner" role="status">' +
+            '<span class="dup-banner-icon">&#9888;</span>' +
+            '<span class="dup-banner-text">' + t('possibleDuplicates').replace('{n}', groups.length) + '</span>' +
+            '<button class="btn btn-sm btn-outline" id="btn-review-duplicates">' + t('reviewDuplicates') + '</button>' +
+            '</div>';
+    }
+
+    // Which record survives a merge, unless the trainer picks another: the one
+    // already graded, then one the student registered themselves (it holds
+    // their own answers and their edit link), then one with a photo, then the
+    // earliest.
+    function defaultKeep(records) {
+        function score(ex) {
+            return (hasGrades(ex.id) ? 8 : 0) +
+                (String(ex.addedBy || '').indexOf('self-registration') === 0 ? 4 : 0) +
+                (App.PhotoUpload.isUsablePhoto(ex.photoUrl) ? 2 : 0);
+        }
+        return records.slice().sort(function (a, b) {
+            var d = score(b) - score(a);
+            if (d) return d;
+            return (a.order || 0) - (b.order || 0);
+        })[0].id;
+    }
+
+    function showDuplicatesModal() {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var modalContainer = document.getElementById('modal-container');
+        var groups = duplicateGroups();
+        if (!groups.length) { modalContainer.innerHTML = ''; return; }
+
+        var html = '<div class="modal-overlay" id="dup-overlay"><div class="modal dup-modal">';
+        html += '<h2>' + t('reviewDuplicates') + '</h2>';
+        html += '<p class="dup-help">' + t('duplicatesHelp') + '</p>';
+
+        groups.forEach(function (ids, gi) {
+            var records = ids.map(function (id) { return cachedExaminees[id]; }).filter(Boolean);
+            var graded = records.filter(function (ex) { return hasGrades(ex.id); });
+            var keepId = defaultKeep(records);
+
+            html += '<div class="dup-group" data-group="' + gi + '">';
+            html += '<div class="dup-cards">';
+            records.forEach(function (ex) {
+                var isGraded = hasGrades(ex.id);
+                html += '<label class="dup-card">';
+                html += '<input type="radio" name="dup-keep-' + gi + '" value="' + ex.id + '"' +
+                    (ex.id === keepId ? ' checked' : '') + '>';
+                html += '<div class="dup-card-body">';
+                if (App.PhotoUpload.isUsablePhoto(ex.photoUrl)) {
+                    html += '<img class="dup-photo" src="' + esc(ex.photoUrl) + '" alt="">';
+                } else {
+                    html += '<div class="dup-photo dup-photo-empty">&#128100;</div>';
+                }
+                html += '<div class="dup-name">' + esc((ex.firstName || '') + ' ' + (ex.lastName || '')) + '</div>';
+                html += '<div class="dup-row">' + t('dateOfBirth') + ': ' +
+                    esc(ex.dateOfBirth ? App.Utils.formatDate(App.Utils.normalizeDate(ex.dateOfBirth) || ex.dateOfBirth) : '—') + '</div>';
+                if (ex.club) html += '<div class="dup-row">' + esc(ex.club) + '</div>';
+                if (ex.rank) html += '<div class="dup-row">' + esc(ex.rank) + '</div>';
+                html += '<div class="dup-tags">';
+                html += '<span class="dup-tag">' + (String(ex.addedBy || '').indexOf('self-registration') === 0
+                    ? t('dupSelfRegistered') : t('dupAddedByTrainer')) + '</span>';
+                if (isGraded) html += '<span class="dup-tag dup-tag-graded">' + t('dupHasGrades') + '</span>';
+                html += '</div>';
+                html += '<div class="dup-keep-label">' + t('dupKeepThis') + '</div>';
+                html += '</div></label>';
+            });
+            html += '</div>';
+
+            html += '<div class="dup-error auth-error" style="display:none"></div>';
+            html += '<div class="dup-actions">';
+            if (graded.length > 1) {
+                // Merging would throw away one trainer-graded record. Leave that
+                // to a person deleting by hand, knowingly.
+                html += '<p class="dup-blocked">' + t('dupBothGraded') + '</p>';
+            } else {
+                html += '<button class="btn btn-primary btn-sm dup-merge-btn" data-group="' + gi + '">' + t('mergeRecords') + '</button>';
+            }
+            html += '<button class="btn btn-outline btn-sm dup-distinct-btn" data-group="' + gi + '">' + t('notSamePerson') + '</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+
+        html += '<div class="modal-actions"><button class="btn btn-outline" id="btn-close-dup">' + t('close') + '</button></div>';
+        html += '</div></div>';
+        modalContainer.innerHTML = html;
+
+        function close() { modalContainer.innerHTML = ''; }
+        document.getElementById('btn-close-dup').addEventListener('click', close);
+        document.getElementById('dup-overlay').addEventListener('click', function (e) { if (e.target === this) close(); });
+
+        function groupError(gi, msg) {
+            var el = modalContainer.querySelector('.dup-group[data-group="' + gi + '"] .dup-error');
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = msg ? '' : 'none';
+        }
+
+        modalContainer.querySelectorAll('.dup-merge-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                var gi = parseInt(btn.dataset.group, 10);
+                var ids = groups[gi];
+                var checked = modalContainer.querySelector('input[name="dup-keep-' + gi + '"]:checked');
+                if (!checked) return;
+                var keepId = checked.value;
+                var dropIds = ids.filter(function (id) { return id !== keepId; });
+                if (dropIds.some(hasGrades)) {
+                    groupError(gi, t('dupKeepGraded'));
+                    return;
+                }
+                groupError(gi, '');
+                btn.disabled = true;
+                try {
+                    var records = {};
+                    ids.forEach(function (id) { records[id] = cachedExaminees[id]; });
+                    var info = await App.Storage.mergeExaminees(currentExamId, keepId, dropIds, records);
+                    App.Undo.push('recordsMerged', async function () {
+                        await App.Storage.undoMerge(currentExamId, info);
+                    });
+                    // The examinee listener re-renders the table (and closes this);
+                    // reopen it if other groups are still waiting.
+                    setTimeout(function () {
+                        if (duplicateGroups().length && document.getElementById('modal-container')) showDuplicatesModal();
+                    }, 400);
+                } catch (err) {
+                    btn.disabled = false;
+                    groupError(gi, t('error') + ': ' + (err.message || err));
+                }
+            });
+        });
+
+        modalContainer.querySelectorAll('.dup-distinct-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                var gi = parseInt(btn.dataset.group, 10);
+                btn.disabled = true;
+                try {
+                    var pairs = await App.Storage.markNotDuplicates(currentExamId, groups[gi]);
+                    var known = cachedExam.notDuplicates || [];
+                    pairs.forEach(function (p) { if (known.indexOf(p) === -1) known.push(p); });
+                    cachedExam.notDuplicates = known;
+                    // Nothing about the students changed, so no listener fires;
+                    // redraw here.
+                    renderTable();
+                    if (duplicateGroups().length) showDuplicatesModal();
+                } catch (err) {
+                    btn.disabled = false;
+                    groupError(gi, t('error') + ': ' + (err.message || err));
+                }
+            });
+        });
+    }
+
     function bindEvents() {
         var t = App.I18n.t;
+
+        var dupBtn = document.getElementById('btn-review-duplicates');
+        if (dupBtn) dupBtn.addEventListener('click', showDuplicatesModal);
 
         document.getElementById('btn-back-list').addEventListener('click', function () {
             App.Router.navigate('#/');

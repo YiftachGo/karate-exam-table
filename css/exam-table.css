@@ -1138,3 +1138,99 @@ thead .sticky-col {
     color: #b0b0b0;
     font-style: italic;
 }
+
+/* --- Possible duplicates --- */
+.dup-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    background: #fff8e1;
+    border: 1px solid #ffcc80;
+    border-radius: var(--radius);
+    color: #5d4037;
+}
+.dup-banner-icon { font-size: 1.2rem; }
+.dup-banner-text { flex: 1; min-width: 180px; }
+
+.dup-modal { max-width: 720px; width: 100%; }
+.dup-help { color: var(--text-secondary); margin: 0 0 12px; }
+.dup-group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.dup-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+.dup-card {
+    position: relative;
+    display: block;
+    cursor: pointer;
+}
+.dup-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.dup-card-body {
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    text-align: center;
+    height: 100%;
+    transition: border-color var(--transition), background var(--transition);
+}
+.dup-card input:checked + .dup-card-body {
+    border-color: var(--primary-light);
+    background: #e8eaf6;
+}
+.dup-card input:focus-visible + .dup-card-body { outline: 2px solid var(--primary-light); outline-offset: 2px; }
+.dup-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0 auto 6px;
+    display: block;
+}
+.dup-photo-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    font-size: 1.8rem;
+}
+.dup-name { font-weight: 600; margin-bottom: 4px; }
+.dup-row { font-size: 0.85rem; color: var(--text-secondary); }
+.dup-tags { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 6px; }
+.dup-tag {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+}
+.dup-tag-graded { background: #e8f5e9; border-color: #a5d6a7; color: #2e7d32; }
+.dup-keep-label {
+    display: none;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary-light);
+}
+.dup-card input:checked + .dup-card-body .dup-keep-label { display: block; }
+.dup-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+}
+.dup-blocked { margin: 0; font-size: 0.85rem; color: var(--accent); flex-basis: 100%; }
+.dup-error { margin-top: 8px; }

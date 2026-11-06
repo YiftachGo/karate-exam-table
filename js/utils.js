@@ -369,7 +369,9 @@ App.Utils = (function () {
         return (s || '').trim().toLowerCase()
             .replace(/[֑-ׇ]/g, '')
             .replace(/['"׳״`‘’]/g, '')
-            .replace(/[\s\-_]/g, '')
+            // "/" also goes: these strings become Firestore document IDs, where a
+            // slash would be read as a path separator.
+            .replace(/[\s\-_\/]/g, '')
             .replace(/ם/g, 'מ')   // ם -> מ
             .replace(/ן/g, 'נ')   // ן -> נ
             .replace(/ץ/g, 'צ')   // ץ -> צ
@@ -465,6 +467,96 @@ App.Utils = (function () {
         return looseName(d.firstName) + '|' + looseName(d.lastName) + '|' + dobDigits(d.dateOfBirth);
     }
 
+    // One person, as a document-ID-safe string: folded first name, folded last
+    // name, birthdate digits. '' unless all three are present, since a partial key
+    // could collide between different people. Used for the per-exam registration
+    // marker that stops the same person registering twice.
+    function personKey(firstName, lastName, dob) {
+        var f = looseName(firstName);
+        var l = looseName(lastName);
+        var d = dobDigits(dob);
+        return (f && l && d) ? f + '_' + l + '_' + d : '';
+    }
+
+    // Groups of examinees that look like the same person, for the trainer to
+    // review. Deliberately broader than the registration marker, because a human
+    // confirms each one:
+    //   - same folded names, birthdates equal or at least one missing — this is
+    //     what catches a trainer-added student who also registered themselves
+    //   - same consonant skeleton (כהן / כוהן) with the same birthdate
+    //   - first and last name swapped, with the same birthdate
+    // Two records with different birthdates are never flagged.
+    // notDuplicates: pair keys ("idA|idB", sorted) the trainer already dismissed.
+    function findDuplicateGroups(examinees, notDuplicates) {
+        var dismissed = {};
+        (notDuplicates || []).forEach(function (k) { dismissed[k] = true; });
+        var list = (examinees || []).filter(function (e) { return e && e.id; });
+
+        // Each group carries the one birthdate its members have (or none yet).
+        // Two groups with different birthdates are never joined: otherwise a
+        // record with no birthdate would chain "Yossi Cohen 2010" and "Yossi
+        // Cohen 2012" — two different children — into one group to merge.
+        var parent = {};
+        var groupDob = {};
+        function find(x) { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; }
+        function union(a, b) {
+            var ra = find(a), rb = find(b);
+            if (ra === rb) return true;
+            var da = groupDob[ra], db = groupDob[rb];
+            if (da && db && da !== db) return false;
+            parent[ra] = rb;
+            groupDob[rb] = db || da;
+            return true;
+        }
+        list.forEach(function (e) { parent[e.id] = e.id; });
+
+        var info = list.map(function (e) {
+            return {
+                id: e.id,
+                f: looseName(e.firstName), l: looseName(e.lastName),
+                sf: skeletonName(e.firstName), sl: skeletonName(e.lastName),
+                d: dobDigits(e.dateOfBirth)
+            };
+        });
+
+        info.forEach(function (x) { groupDob[x.id] = x.d; });
+
+        // Matches with equal birthdates are joined first, so a record with none
+        // attaches to an established group rather than deciding which one forms.
+        var strong = [], weak = [];
+        for (var i = 0; i < info.length; i++) {
+            for (var j = i + 1; j < info.length; j++) {
+                var a = info[i], b = info[j];
+                if (!a.f || !a.l || !b.f || !b.l) continue;
+                var pair = [a.id, b.id].sort().join('|');
+                if (dismissed[pair]) continue;
+                var dobEqual = a.d && a.d === b.d;
+                var dobCompatible = !a.d || !b.d || a.d === b.d;
+                if ((a.f === b.f && a.l === b.l && dobEqual) ||
+                    (a.sf === b.sf && a.sl === b.sl && dobEqual) ||
+                    (a.f === b.l && a.l === b.f && dobEqual)) {
+                    strong.push([a.id, b.id]);
+                } else if (a.f === b.f && a.l === b.l && dobCompatible) {
+                    weak.push([a.id, b.id]);
+                }
+            }
+        }
+        var hit = false;
+        strong.concat(weak).forEach(function (p) {
+            if (union(p[0], p[1])) hit = true;
+        });
+        if (!hit) return [];
+
+        var groups = {};
+        list.forEach(function (e) {
+            var root = find(e.id);
+            (groups[root] = groups[root] || []).push(e.id);
+        });
+        return Object.keys(groups)
+            .map(function (k) { return groups[k]; })
+            .filter(function (ids) { return ids.length > 1; });
+    }
+
     // Identity of a dojo+class group, used to find "the previous exam of this
     // group". The class name is free text, so it is normalized — otherwise
     // 'בוגרים' and 'בוגרים ' would look like two different classes.
@@ -512,6 +604,8 @@ App.Utils = (function () {
         buildClubSelect: buildClubSelect,
         examGroupKey: examGroupKey,
         examineeMatchKey: examineeMatchKey,
+        personKey: personKey,
+        findDuplicateGroups: findDuplicateGroups,
         renderGasshukuList: renderGasshukuList,
         readGasshukuList: readGasshukuList,
         renderLocationDateList: renderLocationDateList,

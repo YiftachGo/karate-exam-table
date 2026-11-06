@@ -196,6 +196,17 @@ App.Storage = (function () {
         delete payload.id;
         await App.db.collection('exams').doc(examId)
             .collection('examinees').doc(examineeId).set(payload);
+        // Put back the registration marker the delete released, or the restored
+        // student could register a second time.
+        if (payload.registrationKey) {
+            try {
+                await App.db.collection(REGISTRATIONS).doc(payload.registrationKey).set({
+                    examId: examId,
+                    invitationCode: payload.invitationCode || '',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (e) { console.warn('could not restore registration marker', e); }
+        }
     }
 
     // --- General exam remarks (per trainer, in dedicated subcollection) ---
@@ -295,9 +306,24 @@ App.Storage = (function () {
     }
 
     async function removeExaminee(examId, examineeId) {
+        var examineeRef = App.db.collection('exams').doc(examId)
+            .collection('examinees').doc(examineeId);
+
+        // Read first so the registration marker can be released: a student the
+        // trainer removed must be able to register again.
+        var regKey = '';
+        try {
+            var snap = await examineeRef.get();
+            regKey = snap.exists ? (snap.data().registrationKey || '') : '';
+        } catch (e) { /* the delete below still runs */ }
+
         // Delete examinee doc
-        await App.db.collection('exams').doc(examId)
-            .collection('examinees').doc(examineeId).delete();
+        await examineeRef.delete();
+
+        if (regKey) {
+            try { await App.db.collection(REGISTRATIONS).doc(regKey).delete(); }
+            catch (e) { console.warn('could not release registration marker', regKey, e); }
+        }
 
         // Delete all grade docs for this examinee
         var gradesSnap = await App.db.collection('exams').doc(examId)
@@ -479,14 +505,55 @@ App.Storage = (function () {
         return null;
     }
 
-    async function selfRegisterExaminee(examId, data, invitationCode) {
+    // --- Registration markers: one person, one registration per exam ---
+    //
+    // examRegistrations/{examId}__{personKey} exists once someone with that name
+    // and birthdate has registered for the exam. It is written in the same batch
+    // as their examinee record, and the Firestore rule forbids updating one — so a
+    // second registration of the same person turns that batch into an update of
+    // an existing marker and Firebase refuses the whole thing.
+    //
+    // The marker holds no examinee ID. Anyone who knows a student's name and
+    // birthdate can check whether they registered, but cannot get from there to
+    // their record (which would also expose the token that allows editing it).
+
+    var REGISTRATIONS = 'examRegistrations';
+
+    function registrationId(examId, firstName, lastName, dob) {
+        var key = App.Utils.personKey(firstName, lastName, dob);
+        return key ? examId + '__' + key : '';
+    }
+
+    // 'registered' | 'free' | 'unknown'. Unknown covers a missing or broken rule
+    // and network trouble; callers must treat it as "carry on", never as a block.
+    async function checkRegistration(examId, firstName, lastName, dob) {
+        var id = registrationId(examId, firstName, lastName, dob);
+        if (!id) return 'unknown';
+        try {
+            var snap = await App.db.collection(REGISTRATIONS).doc(id).get();
+            return snap.exists ? 'registered' : 'free';
+        } catch (e) {
+            return 'unknown';
+        }
+    }
+
+    // opts: { linkedRecordIds, addedBy } — set for a returning student, so their
+    // new record links back to the one it was prefilled from.
+    //
+    // Throws Error('already_registered') when this person is already registered
+    // for the exam. If the marker cannot be written for any other reason — the
+    // rule not deployed yet, or deployed wrong — the student is still registered,
+    // just without the duplicate guard: a broken guard must never stop real
+    // registrations.
+    async function selfRegisterExaminee(examId, data, invitationCode, opts) {
+        opts = opts || {};
         var examRef = App.db.collection('exams').doc(examId);
         var examineeRef = examRef.collection('examinees').doc();
 
         // Generate a random token the student will use to come back and edit their own registration
         var selfEditToken = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
-        await examineeRef.set({
+        var payload = {
             firstName: data.firstName,
             lastName: data.lastName,
             dateOfBirth: data.dateOfBirth || '',
@@ -501,11 +568,40 @@ App.Storage = (function () {
             examPayment: data.examPayment || '',
             photoUrl: data.photoUrl || '',
             order: 0,
-            addedBy: 'self-registration',
+            addedBy: opts.addedBy || 'self-registration',
             invitationCode: invitationCode,
             selfEditToken: selfEditToken,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        };
+        if (Array.isArray(opts.linkedRecordIds) && opts.linkedRecordIds.length) {
+            payload.linkedRecordIds = opts.linkedRecordIds;
+        }
+
+        var regId = registrationId(examId, data.firstName, data.lastName, data.dateOfBirth);
+        var guarded = false;
+        if (regId) {
+            try {
+                var batch = App.db.batch();
+                // Stored so deleting the student can release the marker.
+                batch.set(examineeRef, Object.assign({}, payload, { registrationKey: regId }));
+                batch.set(App.db.collection(REGISTRATIONS).doc(regId), {
+                    examId: examId,
+                    invitationCode: invitationCode,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                await batch.commit();
+                guarded = true;
+            } catch (e) {
+                // Batches are all-or-nothing, so nothing was written. Find out why.
+                if (await checkRegistration(examId, data.firstName, data.lastName, data.dateOfBirth) === 'registered') {
+                    var dup = new Error('already_registered');
+                    dup.code = 'already_registered';
+                    throw dup;
+                }
+                console.warn('registration guard unavailable, registering without it:', e);
+            }
+        }
+        if (!guarded) await examineeRef.set(payload);
 
         try {
             await examRef.update({
@@ -842,52 +938,108 @@ App.Storage = (function () {
         return _syncDirectoryEntries(exam.id, exam.date || '', exam.examinees || {}, gradesByExaminee);
     }
 
-    // Creates this exam's examinee record for a recognised returning student,
-    // prefilled from their directory entry and linked back to the source record.
-    // Mirrors selfRegisterExaminee — same token scheme, same cosmetic count bump.
-    async function selfRegisterReturning(examId, entry, invitationCode) {
+    // --- Duplicate examinees: merge and dismiss (trainer only) ---
+
+    var _MERGE_FILL_FIELDS = [
+        'photoUrl', 'dateOfBirth', 'club', 'rank', 'targetRank',
+        'trainingStartDate', 'lastExamDate', 'trainingsPerWeek',
+        'examPayment', 'formSubmitted', 'theoryExamGrade'
+    ];
+
+    function _isEmpty(v) {
+        if (v == null) return true;
+        if (Array.isArray(v)) return v.length === 0;
+        return String(v).trim() === '';
+    }
+
+    // Folds each drop record into keepId, then deletes the drops.
+    //   records: { id: data } for keepId and every drop id, as currently loaded.
+    //
+    // Only fills what the kept record is missing — never overwrites — so whatever
+    // the trainer already corrected on the kept record wins. A photo on either
+    // record therefore survives the merge.
+    //
+    // Drops must have no grades (the caller checks): their grade documents are
+    // keyed by examinee ID and would be orphaned. Their registration markers are
+    // left in place on purpose, so neither spelling can register again.
+    //
+    // Returns what is needed to undo it.
+    async function mergeExaminees(examId, keepId, dropIds, records) {
         var examRef = App.db.collection('exams').doc(examId);
-        var examineeRef = examRef.collection('examinees').doc();
-        var selfEditToken = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        var keep = records[keepId] || {};
+        var patch = {};
+        var linked = Array.isArray(keep.linkedRecordIds) ? keep.linkedRecordIds.slice() : [];
 
-        var linked = [];
-        if (entry.sourceExamId && entry.sourceExamineeId) {
-            linked.push(entry.sourceExamId + '__' + entry.sourceExamineeId);
-        }
-
-        await examineeRef.set({
-            firstName: entry.firstName || '',
-            lastName: entry.lastName || '',
-            dateOfBirth: entry.dateOfBirth || '',
-            rank: entry.currentRank || '',
-            targetRank: '',
-            club: entry.club || '',
-            trainingStartDate: entry.trainingStartDate || '',
-            lastExamDate: entry.lastExamDate || '',
-            trainingsPerWeek: entry.trainingsPerWeek || '',
-            beltTrainings: Array.isArray(entry.beltTrainings) ? entry.beltTrainings : [],
-            gasshukus: Array.isArray(entry.gasshukus) ? entry.gasshukus : [],
-            examPayment: '',
-            photoUrl: entry.photoUrl || '',
-            linkedRecordIds: linked,
-            order: 0,
-            addedBy: 'self-registration:returning',
-            invitationCode: invitationCode,
-            selfEditToken: selfEditToken,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        try {
-            await examRef.update({
-                examineeCount: firebase.firestore.FieldValue.increment(1),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        dropIds.forEach(function (id) {
+            var drop = records[id] || {};
+            _MERGE_FILL_FIELDS.forEach(function (k) {
+                if (_isEmpty(keep[k]) && _isEmpty(patch[k]) && !_isEmpty(drop[k])) patch[k] = drop[k];
             });
-        } catch (e) {
-            // May fail for unauthenticated registrants — count is cosmetic
-            console.warn('Could not update exam count:', e);
-        }
+            ['gasshukus', 'beltTrainings'].forEach(function (k) {
+                if (_isEmpty(keep[k]) && _isEmpty(patch[k]) && !_isEmpty(drop[k])) patch[k] = drop[k];
+            });
+            (drop.linkedRecordIds || []).forEach(function (l) {
+                if (linked.indexOf(l) === -1) linked.push(l);
+            });
+            // Lets a later delete of the kept student release this marker too.
+            if (!keep.registrationKey && !patch.registrationKey && drop.registrationKey) {
+                patch.registrationKey = drop.registrationKey;
+            }
+        });
+        if (linked.length) patch.linkedRecordIds = linked;
 
-        return { id: examineeRef.id, selfEditToken: selfEditToken };
+        var batch = App.db.batch();
+        if (Object.keys(patch).length) {
+            patch.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+            batch.update(examRef.collection('examinees').doc(keepId), patch);
+        }
+        dropIds.forEach(function (id) {
+            batch.delete(examRef.collection('examinees').doc(id));
+        });
+        batch.update(examRef, {
+            examineeCount: firebase.firestore.FieldValue.increment(-dropIds.length),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await batch.commit();
+
+        return { keepId: keepId, keepBefore: keep, drops: dropIds.map(function (id) {
+            return { id: id, data: records[id] };
+        }) };
+    }
+
+    async function undoMerge(examId, info) {
+        var examRef = App.db.collection('exams').doc(examId);
+        var batch = App.db.batch();
+        var keepData = Object.assign({}, info.keepBefore);
+        delete keepData.id;
+        batch.set(examRef.collection('examinees').doc(info.keepId), keepData);
+        info.drops.forEach(function (d) {
+            var data = Object.assign({}, d.data);
+            delete data.id;
+            batch.set(examRef.collection('examinees').doc(d.id), data);
+        });
+        batch.update(examRef, {
+            examineeCount: firebase.firestore.FieldValue.increment(info.drops.length),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await batch.commit();
+    }
+
+    // Remembers that these records are different people, for every trainer of the
+    // exam, so they stop being flagged.
+    async function markNotDuplicates(examId, ids) {
+        var pairs = [];
+        for (var i = 0; i < ids.length; i++) {
+            for (var j = i + 1; j < ids.length; j++) {
+                pairs.push([ids[i], ids[j]].sort().join('|'));
+            }
+        }
+        if (!pairs.length) return pairs;
+        await App.db.collection('exams').doc(examId).update({
+            notDuplicates: firebase.firestore.FieldValue.arrayUnion.apply(null, pairs),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return pairs;
     }
 
     // --- Dojo/class groups ---
@@ -1527,7 +1679,10 @@ App.Storage = (function () {
         syncStudentDirectoryFromLoadedExam: syncStudentDirectoryFromLoadedExam,
         resolveCurrentRank: resolveCurrentRank,
         resolveExamOutcome: resolveExamOutcome,
-        selfRegisterReturning: selfRegisterReturning,
+        checkRegistration: checkRegistration,
+        mergeExaminees: mergeExaminees,
+        undoMerge: undoMerge,
+        markNotDuplicates: markNotDuplicates,
         findPreviousExamInGroup: findPreviousExamInGroup,
         getImportCandidates: getImportCandidates,
         importExaminees: importExaminees,

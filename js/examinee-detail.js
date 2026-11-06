@@ -196,7 +196,9 @@ App.ExamineeDetail = (function () {
                 await App.PhotoUpload.uploadPhoto(examId, examineeId, file);
                 render(examId, examineeId);
             } catch (err) {
-                alert(App.I18n.t('error') + ': ' + err.message);
+                alert(err && err.message === 'image_unreadable'
+                    ? App.I18n.t('photoUnreadable')
+                    : App.I18n.t('error') + ': ' + err.message);
             }
         });
 
