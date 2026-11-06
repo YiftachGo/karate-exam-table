@@ -520,3 +520,14 @@
 .empty-state p {
     font-size: 1.1rem;
 }
+
+.prep-type-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.prep-type-check input { width: auto; margin: 0; }
+.exam-card-header .prep-pill { flex-shrink: 0; }
+.verdict-conditional { background: #fff3e0; color: #e65100; }

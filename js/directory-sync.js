@@ -43,7 +43,9 @@ App.DirectorySync = (function () {
     // the rank resolved from the exam's result. Anything else changing (notes,
     // marks on other categories) leaves the fingerprint alone and costs no writes.
     function fingerprint(exam) {
-        var parts = [FP_VERSION, exam.date || ''];
+        // The exam type changes what a sync writes (a prep session never promotes
+        // and is not a "last exam"), so converting one must trigger a resync.
+        var parts = [FP_VERSION, exam.date || '', exam.examType || ''];
         var examinees = exam.examinees || {};
         Object.keys(examinees).sort().forEach(function (id) {
             var d = examinees[id] || {};
@@ -55,7 +57,7 @@ App.DirectorySync = (function () {
                 id, d.firstName || '', d.lastName || '',
                 App.Utils.normalizeDate(d.dateOfBirth), d.club || '',
                 App.Storage.resolveCurrentRank(grades, d),
-                d.trainingStartDate || '', d.trainingsPerWeek || '',
+                d.trainingStartDate || '', d.trainingsPerWeek || '', d.lastExamDate || '',
                 d.gasshukus || [], d.beltTrainings || [],
                 // A base64 photo is large; its length and tail are enough to notice a change.
                 photo.length + ':' + photo.slice(-24)

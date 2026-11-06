@@ -43,6 +43,8 @@ App.Storage = (function () {
                     dojo: d.dojo || '',
                     classGroup: d.classGroup || '',
                     groupKey: d.groupKey || '',
+                    // 'prep' for a pre-exam training session, '' for an exam.
+                    examType: d.examType || '',
                     // Coerces the legacy single-string beltSystem written before
                     // several systems could be selected.
                     beltSystems: App.Utils.toBeltSystems(d.beltSystems || d.beltSystem)
@@ -103,7 +105,9 @@ App.Storage = (function () {
         var classGroup = (opts.classGroup || '').trim();
         var beltSystems = App.Utils.toBeltSystems(opts.beltSystems);
         var groupKey = App.Utils.examGroupKey(dojo, classGroup);
+        var examType = opts.examType === 'prep' ? 'prep' : '';
         var docRef = await App.db.collection('exams').add({
+            examType: examType,
             name: name,
             date: date,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -126,7 +130,8 @@ App.Storage = (function () {
             id: docRef.id, name: name, date: date,
             dojo: dojo, classGroup: classGroup,
             beltSystems: beltSystems,
-            groupKey: groupKey
+            groupKey: groupKey,
+            examType: examType
         };
     }
 
@@ -475,19 +480,21 @@ App.Storage = (function () {
             code: code,
             name: exam.name || '',
             date: exam.date || '',
-            beltSystems: App.Utils.toBeltSystems(exam.beltSystems || exam.beltSystem)
+            beltSystems: App.Utils.toBeltSystems(exam.beltSystems || exam.beltSystem),
+            examType: exam.examType || ''
         });
         return code;
     }
 
     // Syncs the public examInvitations doc — called when trainer opens the invite modal
     // to ensure backward-compatible exams (created before examInvitations existed) still work
-    async function syncInvitationDoc(examId, code, name, date, beltSystems) {
+    async function syncInvitationDoc(examId, code, name, date, beltSystems, examType) {
         await App.db.collection('examInvitations').doc(examId).set({
             code: code,
             name: name || '',
             date: date || '',
-            beltSystems: App.Utils.toBeltSystems(beltSystems)
+            beltSystems: App.Utils.toBeltSystems(beltSystems),
+            examType: examType || ''
         });
     }
 
@@ -499,7 +506,8 @@ App.Storage = (function () {
         if (inv.code && inv.code === code.toUpperCase()) {
             return {
                 id: examId, name: inv.name, date: inv.date,
-                beltSystems: App.Utils.toBeltSystems(inv.beltSystems || inv.beltSystem)
+                beltSystems: App.Utils.toBeltSystems(inv.beltSystems || inv.beltSystem),
+                examType: inv.examType || ''
             };
         }
         return null;
@@ -576,6 +584,9 @@ App.Storage = (function () {
         if (Array.isArray(opts.linkedRecordIds) && opts.linkedRecordIds.length) {
             payload.linkedRecordIds = opts.linkedRecordIds;
         }
+        // "examId__examineeId" of their record in the prep session before this
+        // exam, so examiners can see what was noted there.
+        if (opts.prepRecordId) payload.prepRecordId = opts.prepRecordId;
 
         var regId = registrationId(examId, data.firstName, data.lastName, data.dateOfBirth);
         var guarded = false;
@@ -825,13 +836,22 @@ App.Storage = (function () {
             currentRank: resolvedRank,
             trainingStartDate: App.Utils.normalizeDate(examineeData.trainingStartDate),
             trainingsPerWeek: examineeData.trainingsPerWeek || '',
-            lastExamDate: sourceExamDate || App.Utils.normalizeDate(examineeData.lastExamDate),
+            // A prep session is not an exam: the student's last exam is still
+            // the one they reported (or the one already on file), never the date
+            // of the session.
+            lastExamDate: opts.sourceIsPrep
+                ? (App.Utils.normalizeDate(examineeData.lastExamDate) || (existing && existing.lastExamDate) || '')
+                : (sourceExamDate || App.Utils.normalizeDate(examineeData.lastExamDate)),
             beltTrainings: Array.isArray(examineeData.beltTrainings) ? examineeData.beltTrainings : [],
             gasshukus: Array.isArray(examineeData.gasshukus) ? examineeData.gasshukus : [],
             photoUrl: examineeData.photoUrl || '',
             sourceExamId: opts.sourceExamId || '',
             sourceExamineeId: opts.sourceExamineeId || '',
             sourceExamDate: sourceExamDate,
+            // Tells the registration form whether the gasshukus and belt
+            // trainings above still count: answers given at a prep session are
+            // still "since the last exam" at the exam that follows it.
+            sourceIsPrep: !!opts.sourceIsPrep,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         // NOTE: selfEditToken, invitationCode, examPayment, formSubmitted,
@@ -875,20 +895,22 @@ App.Storage = (function () {
     // noDob counts students with no usable birthdate. They cannot be keyed, so a
     // returning student can never find those records; the caller reports it so the
     // trainer can fill the dates in.
-    async function _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee) {
+    // isPrep: the exam is a prep session — its result never changes anyone's rank.
+    async function _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee, isPrep) {
         var ids = Object.keys(examinees || {});
         var synced = 0, skipped = 0, noDob = 0;
         for (var i = 0; i < ids.length; i++) {
             var id = ids[i];
             var data = examinees[id] || {};
             if (!App.Utils.dobDigits(data.dateOfBirth)) { noDob++; skipped++; continue; }
-            var rank = resolveCurrentRank(gradesByExaminee[id], data);
+            var rank = isPrep ? (data.rank || '') : resolveCurrentRank(gradesByExaminee[id], data);
             try {
                 var ok = await upsertStudentDirectory(data, {
                     currentRank: rank,
                     sourceExamId: examId,
                     sourceExamineeId: id,
-                    sourceExamDate: examDate
+                    sourceExamDate: examDate,
+                    sourceIsPrep: !!isPrep
                 });
                 if (ok) synced++; else skipped++;
             } catch (e) {
@@ -909,6 +931,7 @@ App.Storage = (function () {
         var examDoc = await App.db.collection('exams').doc(examId).get();
         if (!examDoc.exists) throw new Error('not_found');
         var examDate = examDoc.data().date || '';
+        var isPrep = App.Utils.isPrepExam(examDoc.data());
 
         var examineesSnap = await App.db.collection('exams').doc(examId)
             .collection('examinees').get();
@@ -925,7 +948,7 @@ App.Storage = (function () {
             gradesByExaminee[examineeId].push(d.data());
         });
 
-        return _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee);
+        return _syncDirectoryEntries(examId, examDate, examinees, gradesByExaminee, isPrep);
     }
 
     // Syncs an exam already loaded by getExam() — its examinees and allGrades are
@@ -935,7 +958,8 @@ App.Storage = (function () {
         Object.keys(exam.allGrades || {}).forEach(function (exId) {
             gradesByExaminee[exId] = Object.values(exam.allGrades[exId] || {});
         });
-        return _syncDirectoryEntries(exam.id, exam.date || '', exam.examinees || {}, gradesByExaminee);
+        return _syncDirectoryEntries(exam.id, exam.date || '', exam.examinees || {}, gradesByExaminee,
+            App.Utils.isPrepExam(exam));
     }
 
     // --- Duplicate examinees: merge and dismiss (trainer only) ---
@@ -943,7 +967,7 @@ App.Storage = (function () {
     var _MERGE_FILL_FIELDS = [
         'photoUrl', 'dateOfBirth', 'club', 'rank', 'targetRank',
         'trainingStartDate', 'lastExamDate', 'trainingsPerWeek',
-        'examPayment', 'formSubmitted', 'theoryExamGrade'
+        'examPayment', 'formSubmitted', 'theoryExamGrade', 'prepRecordId'
     ];
 
     function _isEmpty(v) {
@@ -1061,6 +1085,25 @@ App.Storage = (function () {
         return peers[0];
     }
 
+    // The prep session this exam follows: the latest prep session of the same
+    // dojo+class dated no later than the exam. null when there is none.
+    // Reads only the exam documents (not getExamIndex, which also counts every
+    // exam's students).
+    async function findPrepSessionFor(exam) {
+        var uid = App.Auth.getUserId();
+        if (!uid || !exam || !exam.groupKey || App.Utils.isPrepExam(exam)) return null;
+        var snap = await App.db.collection('exams')
+            .where('trainerIds', 'array-contains', uid).get();
+        var best = null;
+        snap.docs.forEach(function (d) {
+            var e = d.data();
+            if (d.id === exam.id || !App.Utils.isPrepExam(e) || e.groupKey !== exam.groupKey) return;
+            if (exam.date && e.date && e.date > exam.date) return;
+            if (!best || (e.date || '') > (best.date || '')) best = { id: d.id, name: e.name, date: e.date || '' };
+        });
+        return best;
+    }
+
     // Every identity already sitting in an exam, for spotting a student who would
     // be imported twice.
     async function _examineeKeysIn(examId) {
@@ -1104,10 +1147,32 @@ App.Storage = (function () {
         var exam = await getExam(sourceExamId);
         if (!exam) return [];
         var present = targetExamId ? await _examineeKeysIn(targetExamId) : {};
+        var fromPrep = App.Utils.isPrepExam(exam);
         var out = [];
         Object.keys(exam.examinees || {}).forEach(function (id) {
             var ex = exam.examinees[id];
             var byTrainer = (exam.allGrades && exam.allGrades[id]) || {};
+            if (fromPrep) {
+                // A prep session promotes nobody: same belt, same goal. What it
+                // contributes is the recommendation to sit the exam.
+                out.push({
+                    examineeId: id,
+                    firstName: ex.firstName || '',
+                    lastName: ex.lastName || '',
+                    dateOfBirth: ex.dateOfBirth || '',
+                    oldRank: ex.rank || '',
+                    previousTargetRank: ex.targetRank || '',
+                    fromPrep: true,
+                    recommendation: App.Utils.prepVerdict(Object.values(byTrainer)),
+                    verdict: 'none',
+                    newRank: ex.rank || '',
+                    promoted: false,
+                    newTargetRank: ex.targetRank || '',
+                    alreadyPresent: !!present[App.Utils.examineeMatchKey(ex)],
+                    order: typeof ex.order === 'number' ? ex.order : 0
+                });
+                return;
+            }
             var outcome = resolveExamOutcome(Object.values(byTrainer), ex);
             out.push({
                 examineeId: id,
@@ -1146,6 +1211,7 @@ App.Storage = (function () {
 
         var sourceDoc = await App.db.collection('exams').doc(sourceExamId).get();
         var sourceDate = sourceDoc.exists ? (sourceDoc.data().date || '') : '';
+        var sourceIsPrep = sourceDoc.exists && App.Utils.isPrepExam(sourceDoc.data());
 
         var batch = App.db.batch();
         var added = 0;
@@ -1157,7 +1223,7 @@ App.Storage = (function () {
             if (!snap.exists) continue;
             var ex = snap.data();
 
-            batch.set(targetRef.collection('examinees').doc(), {
+            var record = {
                 firstName: ex.firstName || '',
                 lastName: ex.lastName || '',
                 dateOfBirth: ex.dateOfBirth || '',
@@ -1166,8 +1232,9 @@ App.Storage = (function () {
                 targetRank: item.targetRank || '',
                 club: ex.club || targetDojo,
                 trainingStartDate: ex.trainingStartDate || '',
-                // They sat the source exam, so that is now their last exam.
-                lastExamDate: sourceDate || ex.lastExamDate || '',
+                // They sat the source exam, so that is now their last exam —
+                // unless it was a prep session, which is not an exam.
+                lastExamDate: sourceIsPrep ? (ex.lastExamDate || '') : (sourceDate || ex.lastExamDate || ''),
                 trainingsPerWeek: ex.trainingsPerWeek || '',
                 beltTrainings: Array.isArray(ex.beltTrainings) ? ex.beltTrainings : [],
                 gasshukus: Array.isArray(ex.gasshukus) ? ex.gasshukus : [],
@@ -1180,7 +1247,9 @@ App.Storage = (function () {
                 order: nextOrder + added,
                 addedBy: 'imported:' + sourceExamId,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            if (sourceIsPrep) record.prepRecordId = sourceExamId + '__' + item.examineeId;
+            batch.set(targetRef.collection('examinees').doc(), record);
             added++;
         }
 
@@ -1684,6 +1753,7 @@ App.Storage = (function () {
         undoMerge: undoMerge,
         markNotDuplicates: markNotDuplicates,
         findPreviousExamInGroup: findPreviousExamInGroup,
+        findPrepSessionFor: findPrepSessionFor,
         getImportCandidates: getImportCandidates,
         importExaminees: importExaminees,
         exportExam: exportExam,

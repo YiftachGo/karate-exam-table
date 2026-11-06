@@ -16,6 +16,37 @@ App.ExamTable = (function () {
     var selectMode = false;
     var selectedExamineeIds = new Set();
 
+    // --- Prep sessions (אימון הכנה) ---
+    //
+    // Graded exactly like an exam. The final category stores the same
+    // 'pass' | 'fail' | 'conditional:<text>' values, but means a recommendation
+    // to sit the rank exam, so only its name and button labels change — and
+    // there is no new-rank picker, since nobody is promoted by a prep session.
+
+    function isPrep() { return App.Utils.isPrepExam(cachedExam); }
+
+    // Categories in display order, with the final category renamed in a prep
+    // session (unless the trainer gave it a name of their own).
+    function examCategories() {
+        var cats = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        if (!isPrep()) return cats;
+        var t = App.I18n.t;
+        return cats.map(function (c) {
+            if (c.key !== 'rank_approval' || (customCategories && customCategories.rank_approval)) return c;
+            return Object.assign({}, c, { he: t('prepRecommendationCat', 'he'), en: t('prepRecommendationCat', 'en') });
+        });
+    }
+
+    // Label for a stored rank_approval value, worded for this exam's type.
+    function verdictLabel(val) {
+        var t = App.I18n.t;
+        var prep = isPrep();
+        if (val && val.indexOf('conditional:') === 0) return prep ? t('prepConditional') : t('conditionalPass');
+        if (val === 'pass') return prep ? t('prepRecommended') : t('pass');
+        if (val === 'fail') return prep ? t('prepNotYet') : t('fail');
+        return val;
+    }
+
     // --- Grading view: grid / one category / one student ---
     //
     // A real exam moves both ways through the grid: the group performs a category
@@ -133,6 +164,7 @@ App.ExamTable = (function () {
 
     async function render(examId) {
         currentExamId = examId;
+        resetPrepState();
         // Resume the category/student this exam was left on, so a tablet that
         // reloaded mid-exam comes back in place.
         loadFocus();
@@ -161,6 +193,9 @@ App.ExamTable = (function () {
         // since this device last synced the exam.
         if (App.DirectorySync) App.DirectorySync.syncExam(cachedExam);
 
+        // Notes from the prep session this exam follows, if any.
+        ensurePrepLoaded();
+
         unsubGrades = App.Storage.subscribeToGrades(examId, function (allGrades) {
             cachedGrades = allGrades;
             updateGradeCells();
@@ -169,6 +204,7 @@ App.ExamTable = (function () {
         unsubExaminees = App.Storage.subscribeToExaminees(examId, function (examinees) {
             cachedExaminees = examinees;
             renderTable();
+            ensurePrepLoaded();
             // Includes students who just registered themselves through the invite
             // link — syncing them now is what lets them be found at their next exam.
             scheduleDirectorySync();
@@ -188,7 +224,7 @@ App.ExamTable = (function () {
         var container = document.getElementById('app');
         var exam = cachedExam;
         var examinees = getSortedExaminees();
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var categories = examCategories();
         var currentUserId = App.Auth.getUserId();
         var isOwner = exam.ownerId === currentUserId;
         var trainerNames = exam.trainerNames || {};
@@ -205,6 +241,7 @@ App.ExamTable = (function () {
         html += '<button class="back-btn" id="btn-back-list">&larr; ' + t('back') + '</button>';
         html += '<div class="toolbar">';
         html += '<h2 class="page-title">' + App.Utils.escapeHtml(exam.name) + '</h2>';
+        if (isPrep()) html += '<span class="prep-pill">' + t('prepSession') + '</span>';
         html += '<span class="exam-date-badge">' + (exam.date ? App.Utils.formatDate(exam.date) : '') + '</span>';
         html += '<span class="exam-date-badge">' + examinees.length + ' ' + t('examinees') + '</span>';
         html += '<div class="toolbar-spacer"></div>';
@@ -299,6 +336,7 @@ App.ExamTable = (function () {
                 if (ex.targetRank && ex.targetRank !== ex.rank) {
                     html += '<span class="examinee-target-rank" title="' + t('targetRank') + '">→ ' + App.Utils.escapeHtml(ex.targetRank) + '</span>';
                 }
+                html += prepSlot(ex);
                 html += '<button class="btn btn-sm btn-danger remove-examinee-btn" data-id="' + ex.id + '" title="' + t('removeExaminee') + '">&#10005;</button>';
                 html += '</div>';
                 html += '</th>';
@@ -343,6 +381,7 @@ App.ExamTable = (function () {
         bindDragDrop();
         autoResizeTextareas();
         renderBulkBar();
+        fillPrepChips();
         // Lazy-attach autocomplete to grade textareas once the index is built
         attachAutocompleteWhenReady();
     }
@@ -463,6 +502,7 @@ App.ExamTable = (function () {
             html += '<a href="#/exam/' + currentExamId + '/examinee/' + ex.id + '" class="focus-row-name">' +
                 esc(ex.firstName + ' ' + ex.lastName) + '</a>';
             if (ex.rank) html += '<span class="focus-row-sub">' + esc(ex.rank) + '</span>';
+            html += prepSlot(ex);
             html += '</div>';
             html += '</div>';
             html += _focusCell(ex, cat, ctx);
@@ -510,6 +550,7 @@ App.ExamTable = (function () {
         if (ex.rank) html += esc(ex.rank);
         if (ex.targetRank && ex.targetRank !== ex.rank) html += ' → ' + esc(ex.targetRank);
         html += '</span>';
+        html += prepSlot(ex);
         html += '</div>';
         html += '<button class="btn btn-sm export-rec-btn" data-id="' + ex.id + '" title="' +
             t('exportRecommendation') + '">&#128196;</button>';
@@ -551,7 +592,7 @@ App.ExamTable = (function () {
         var view = getView();
         if (view === 'grid') return;
         var examinees = getSortedExaminees();
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var categories = examCategories();
         var list = view === 'category' ? categories : examinees;
         var currentId = view === 'category' ? _focusCatKey : _focusExamineeId;
 
@@ -590,7 +631,7 @@ App.ExamTable = (function () {
         if (!host) return;
         var t = App.I18n.t;
         var lang = App.I18n.getLang();
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var categories = examCategories();
         var examinees = getSortedExaminees();
 
         if (!selectMode) { host.innerHTML = ''; return; }
@@ -779,11 +820,10 @@ App.ExamTable = (function () {
                 var cls, label;
                 if (isConditional) {
                     cls = 'conditional-badge';
-                    label = t('conditionalPass');
                 } else {
                     cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
-                    label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
                 }
+                label = verdictLabel(val);
                 html += '<div class="other-trainer-note">';
                 html += '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span>';
                 html += '<span class="' + cls + '">' + label + '</span>';
@@ -801,12 +841,13 @@ App.ExamTable = (function () {
         var myNewRank = myGrades ? (myGrades[catKey + '_newRank'] || '') : '';
         var isMyConditional = myVal.indexOf('conditional:') === 0;
         var myConditionText = isMyConditional ? myVal.substring(12) : '';
-        var showNewRank = (myVal === 'pass' || isMyConditional);
+        // A prep session promotes nobody, so it never asks for a new rank.
+        var showNewRank = !isPrep() && (myVal === 'pass' || isMyConditional);
 
         html += '<div class="passfail-selector" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
-        html += '<button class="pf-btn pf-pass' + (myVal === 'pass' ? ' active' : '') + '" data-value="pass">' + t('pass') + '</button>';
-        html += '<button class="pf-btn pf-fail' + (myVal === 'fail' ? ' active' : '') + '" data-value="fail">' + t('fail') + '</button>';
-        html += '<button class="pf-btn pf-conditional' + (isMyConditional ? ' active' : '') + '" data-value="conditional">' + t('conditionalPass') + '</button>';
+        html += '<button class="pf-btn pf-pass' + (myVal === 'pass' ? ' active' : '') + '" data-value="pass">' + verdictLabel('pass') + '</button>';
+        html += '<button class="pf-btn pf-fail' + (myVal === 'fail' ? ' active' : '') + '" data-value="fail">' + verdictLabel('fail') + '</button>';
+        html += '<button class="pf-btn pf-conditional' + (isMyConditional ? ' active' : '') + '" data-value="conditional">' + verdictLabel('conditional:') + '</button>';
         html += '</div>';
 
         // Condition input (text or drawing). Wrapped so we can hide it together when not conditional.
@@ -824,6 +865,7 @@ App.ExamTable = (function () {
         html += '</div></div>';
 
         // New rank dropdown — visible only when pass or conditional is active
+        if (isPrep()) return html;
         html += '<div class="newrank-wrapper' + (showNewRank ? '' : ' hidden') + '" data-examinee="' + examineeId + '" data-category="' + catKey + '">';
         html += '<label class="newrank-label">' + t('newRank') + '</label>';
         html += '<select class="newrank-select">';
@@ -874,11 +916,10 @@ App.ExamTable = (function () {
                         var cls, label;
                         if (isConditional) {
                             cls = 'conditional-badge';
-                            label = App.I18n.t('conditionalPass');
                         } else {
                             cls = val === 'pass' ? 'pass-badge' : val === 'fail' ? 'fail-badge' : '';
-                            label = val === 'pass' ? App.I18n.t('pass') : val === 'fail' ? App.I18n.t('fail') : val;
                         }
+                        label = verdictLabel(val);
                         noteDiv.innerHTML = '<span class="trainer-label">' + App.Utils.escapeHtml(name) + ':</span><span class="' + cls + '">' + label + '</span>';
                         if (isConditional) {
                             var cond = val.substring(12);
@@ -1144,14 +1185,16 @@ App.ExamTable = (function () {
         if (!ex) return;
 
         var exam = cachedExam;
-        var categories = App.Utils.getCategoriesOrdered(categoryOrder, customCategories);
+        var categories = examCategories();
         var exGrades = cachedGrades[examineeId] || {};
         var trainerNames = exam.trainerNames || {};
         var dir = lang === 'he' ? 'rtl' : 'ltr';
+        // A prep session gets a training summary, not a rank recommendation.
+        var docTitle = isPrep() ? t('prepSummaryTitle') : t('exportRecommendation');
 
         var html = '<!DOCTYPE html><html lang="' + lang + '" dir="' + dir + '"><head>';
         html += '<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
-        html += '<title>' + t('exportRecommendation') + ' - ' + App.Utils.escapeHtml(ex.firstName + ' ' + ex.lastName) + '</title>';
+        html += '<title>' + docTitle + ' - ' + App.Utils.escapeHtml(ex.firstName + ' ' + ex.lastName) + '</title>';
         html += '<style>';
         html += 'body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; color: #212121; direction: ' + dir + '; }';
         html += 'h1 { color: #1a237e; border-bottom: 2px solid #1a237e; padding-bottom: 8px; font-size: 1.5rem; }';
@@ -1164,11 +1207,13 @@ App.ExamTable = (function () {
         html += '.rec-drawing { display: block; max-width: 100%; max-height: 240px; height: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; margin: 4px 0; }';
         html += '.trainer-name { font-weight: 600; color: #3949ab; }';
         html += '.pass-badge { color: #2e7d32; font-weight: 700; } .fail-badge { color: #c62828; font-weight: 700; } .conditional-badge { color: #e65100; font-weight: 700; }';
+        html += '.prep-verdict { margin: 16px 0; padding: 14px 16px; border-radius: 8px; font-size: 1.1rem; font-weight: 700; border: 2px solid #c5cae9; background: #e8eaf6; }';
+        html += '.prep-verdict-recommended { border-color: #a5d6a7; background: #e8f5e9; color: #2e7d32; } .prep-verdict-conditional { border-color: #ffcc80; background: #fff3e0; color: #e65100; } .prep-verdict-notyet { border-color: #ef9a9a; background: #ffebee; color: #c62828; }';
         html += '.footer { margin-top: 32px; text-align: center; color: #757575; font-size: 0.8rem; }';
         html += '@media print { body { padding: 0; } }';
         html += '</style></head><body>';
 
-        html += '<h1>' + t('exportRecommendation') + '</h1>';
+        html += '<h1>' + docTitle + '</h1>';
 
         // Examinee info
         html += '<div class="info">';
@@ -1191,6 +1236,15 @@ App.ExamTable = (function () {
         if (exam.date) html += '<div class="info-item"><div class="info-label">' + t('examDate') + '</div><div class="info-value">' + App.Utils.formatDate(exam.date) + '</div></div>';
         html += '</div>';
 
+        // The bottom line first: should they sit the rank exam?
+        if (isPrep()) {
+            var pv = App.Utils.prepVerdict(Object.values(exGrades));
+            if (pv !== 'none') {
+                html += '<div class="prep-verdict prep-verdict-' + pv + '">' +
+                    t('prepRecommendationCat') + ': ' + t('prepVerdict_' + pv) + '</div>';
+            }
+        }
+
         // Grades by category
         html += '<h2>' + t('examNotes') + '</h2>';
         categories.forEach(function (cat) {
@@ -1211,7 +1265,7 @@ App.ExamTable = (function () {
                         var isConditional = val.indexOf('conditional:') === 0;
                         var label, cls;
                         if (isConditional) {
-                            label = t('conditionalPass');
+                            label = verdictLabel(val);
                             cls = 'conditional-badge';
                             var condition = val.substring(12);
                             catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span>';
@@ -1222,7 +1276,7 @@ App.ExamTable = (function () {
                             }
                             catHtml += '</div>';
                         } else {
-                            label = val === 'pass' ? t('pass') : val === 'fail' ? t('fail') : val;
+                            label = verdictLabel(val);
                             cls = val === 'pass' ? 'pass-badge' : 'fail-badge';
                             catHtml += '<div class="trainer-note"><span class="' + cls + '">' + label + '</span></div>';
                         }
@@ -1464,6 +1518,182 @@ App.ExamTable = (function () {
         textarea.addEventListener('blur', function () { ghost.innerHTML = ''; });
         // Trigger initial render so existing content gets suggestions if applicable.
         update();
+    }
+
+    // --- Notes from the prep session, shown in the exam that follows it ---
+    //
+    // A student's prep record is found by the link written when they were
+    // imported from the prep session or registered from it (prepRecordId), and
+    // otherwise by name + birthdate in the latest prep session of the same
+    // dojo+class. Loaded in the background after the table is up; each student
+    // gets a chip with the recommendation that opens the full notes.
+
+    var _prepExams = {};          // examId -> loaded exam | 'loading' | null (unavailable)
+    var _groupPrepId = null;
+    var _groupPrepChecked = false;
+
+    function resetPrepState() {
+        _prepExams = {};
+        _groupPrepId = null;
+        _groupPrepChecked = false;
+    }
+
+    function _loadedPrep(examId) {
+        var e = _prepExams[examId];
+        return e && typeof e === 'object' ? e : null;
+    }
+
+    // { exam, examineeId } for this student's prep record, or null.
+    function prepRecordFor(ex) {
+        if (isPrep() || !ex) return null;
+        if (ex.prepRecordId) {
+            var parts = String(ex.prepRecordId).split('__');
+            var linked = _loadedPrep(parts[0]);
+            if (linked && linked.examinees && linked.examinees[parts[1]]) {
+                return { exam: linked, examineeId: parts[1] };
+            }
+        }
+        var group = _groupPrepId && _loadedPrep(_groupPrepId);
+        if (!group) return null;
+        var U = App.Utils;
+        var f = U.looseName(ex.firstName), l = U.looseName(ex.lastName), d = U.dobDigits(ex.dateOfBirth);
+        if (!f || !l) return null;
+        var ids = Object.keys(group.examinees || {});
+        for (var i = 0; i < ids.length; i++) {
+            var p = group.examinees[ids[i]];
+            var pd = U.dobDigits(p.dateOfBirth);
+            if (U.looseName(p.firstName) === f && U.looseName(p.lastName) === l && (!d || !pd || d === pd)) {
+                return { exam: group, examineeId: ids[i] };
+            }
+        }
+        return null;
+    }
+
+    function prepSlot(ex) {
+        return isPrep() ? '' : '<span class="prep-chip-slot" data-id="' + ex.id + '"></span>';
+    }
+
+    // Fills the chip slots from whatever prep sessions are loaded so far. Cheap
+    // and in place, so a background load never re-renders the grid under a
+    // trainer who is typing.
+    function fillPrepChips() {
+        var t = App.I18n.t;
+        document.querySelectorAll('.prep-chip-slot').forEach(function (slot) {
+            var rec = prepRecordFor(cachedExaminees[slot.dataset.id]);
+            if (!rec) { slot.innerHTML = ''; return; }
+            var grades = Object.values((rec.exam.allGrades || {})[rec.examineeId] || {});
+            var v = App.Utils.prepVerdict(grades);
+            slot.innerHTML = '<button type="button" class="prep-chip prep-chip-' + v + '" title="' +
+                App.Utils.escapeHtml(t('prepNotesTitle')) + '">' + t('prepChip') + ': ' +
+                t('prepVerdict_' + v) + '</button>';
+            slot.firstChild.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                showPrepNotesModal(slot.dataset.id);
+            });
+        });
+    }
+
+    async function ensurePrepLoaded() {
+        if (!cachedExam || isPrep()) return;
+        var examId = currentExamId;
+        if (!_groupPrepChecked) {
+            _groupPrepChecked = true;
+            try {
+                var g = await App.Storage.findPrepSessionFor(cachedExam);
+                if (g) _groupPrepId = g.id;
+            } catch (e) {
+                console.warn('prep session lookup failed', e);
+            }
+            if (examId !== currentExamId) return;
+        }
+        var wanted = {};
+        if (_groupPrepId) wanted[_groupPrepId] = true;
+        Object.keys(cachedExaminees).forEach(function (id) {
+            var link = cachedExaminees[id].prepRecordId;
+            if (link) wanted[String(link).split('__')[0]] = true;
+        });
+        var toLoad = Object.keys(wanted).filter(function (id) { return !(id in _prepExams); });
+        if (!toLoad.length) return;
+        toLoad.forEach(function (id) { _prepExams[id] = 'loading'; });
+        await Promise.all(toLoad.map(async function (id) {
+            try {
+                var e = await App.Storage.getExam(id);
+                _prepExams[id] = e && App.Utils.isPrepExam(e) ? e : null;
+            } catch (err) {
+                // Typically: this trainer is not on that prep session.
+                _prepExams[id] = null;
+            }
+        }));
+        if (examId !== currentExamId) return;
+        fillPrepChips();
+    }
+
+    function showPrepNotesModal(examineeId) {
+        var t = App.I18n.t;
+        var esc = App.Utils.escapeHtml;
+        var lang = App.I18n.getLang();
+        var ex = cachedExaminees[examineeId];
+        var rec = prepRecordFor(ex);
+        if (!rec) return;
+        var pe = rec.exam;
+        var byTrainer = (pe.allGrades || {})[rec.examineeId] || {};
+        var names = pe.trainerNames || {};
+        var v = App.Utils.prepVerdict(Object.values(byTrainer));
+        var cats = App.Utils.getCategoriesOrdered(
+            pe.categoryOrder || App.Utils.DEFAULT_CATEGORY_ORDER, pe.customCategories || {});
+
+        var html = '<div class="modal-overlay" id="prep-notes-overlay"><div class="modal modal-wide prep-notes-modal">';
+        html += '<h2>' + t('prepNotesTitle') + ' — ' + esc((ex.firstName || '') + ' ' + (ex.lastName || '')) + '</h2>';
+        html += '<p class="prep-notes-source">' + esc(pe.name || '') + (pe.date ? ' · ' + App.Utils.formatDate(pe.date) : '') + '</p>';
+        html += '<div class="prep-verdict-box prep-chip-' + v + '">' + t('prepRecommendationCat') + ': ' +
+            t('prepVerdict_' + v) + '</div>';
+
+        var any = false;
+        cats.forEach(function (cat) {
+            var rows = '';
+            Object.keys(byTrainer).forEach(function (tid) {
+                var g = byTrainer[tid] || {};
+                var val = g[cat.key] || '';
+                var mark = g[cat.key + '_mark'] || '';
+                var drawing = g[cat.key + '_mode'] === 'draw' ? (g[cat.key + '_drawing'] || '') : '';
+                if (!val && !mark && !drawing) return;
+                var who = esc(g.trainerName || names[tid] || tid.slice(0, 6));
+                var body = '';
+                if (cat.type === 'passfail') {
+                    var cond = val.indexOf('conditional:') === 0 ? val.substring(12) : '';
+                    var label = val.indexOf('conditional:') === 0 ? t('prepConditional')
+                        : val === 'pass' ? t('prepRecommended') : val === 'fail' ? t('prepNotYet') : esc(val);
+                    body = '<strong>' + label + '</strong>' + (cond ? ' — ' + esc(cond) : '');
+                } else {
+                    if (mark && !cat.hideMarks) body += '<span class="comp-badge comp-badge-' + mark + '">' + _markLabel(mark) + '</span> ';
+                    if (val) body += esc(val);
+                }
+                if (drawing) body += '<img src="' + esc(drawing) + '" class="prep-notes-drawing" alt="">';
+                rows += '<div class="prep-notes-row"><span class="trainer-label">' + who + ':</span> ' + body + '</div>';
+            });
+            if (!rows) return;
+            any = true;
+            var catName = cat.key === 'rank_approval' && !(pe.customCategories || {}).rank_approval
+                ? t('prepRecommendationCat') : (cat[lang] || cat.key);
+            html += '<div class="prep-notes-cat"><div class="prep-notes-cat-name">' + esc(catName) + '</div>' + rows + '</div>';
+        });
+        if (!any) html += '<p class="dup-help">' + t('prepNoNotes') + '</p>';
+
+        html += '<div class="modal-actions">';
+        html += '<button class="btn btn-outline" id="btn-open-prep">' + t('openPrepSession') + '</button>';
+        html += '<button class="btn btn-primary" id="btn-close-prep">' + t('close') + '</button>';
+        html += '</div></div></div>';
+
+        var modalContainer = document.getElementById('modal-container');
+        modalContainer.innerHTML = html;
+        function close() { modalContainer.innerHTML = ''; }
+        document.getElementById('btn-close-prep').addEventListener('click', close);
+        document.getElementById('prep-notes-overlay').addEventListener('click', function (e) { if (e.target === this) close(); });
+        document.getElementById('btn-open-prep').addEventListener('click', function () {
+            close();
+            App.Router.navigate('#/exam/' + pe.id);
+        });
     }
 
     // --- Possible duplicates ---
@@ -1812,7 +2042,7 @@ App.ExamTable = (function () {
                     } else {
                         sel.querySelectorAll('.pf-btn').forEach(function (b) { b.classList.remove('active'); });
                         btn.classList.add('active');
-                        var showRank = (val === 'pass' || val === 'conditional');
+                        var showRank = !isPrep() && (val === 'pass' || val === 'conditional');
                         if (newRankWrapper) newRankWrapper.classList.toggle('hidden', !showRank);
                         if (val === 'conditional') {
                             if (condWrapper) condWrapper.classList.remove('hidden');
@@ -2080,7 +2310,7 @@ App.ExamTable = (function () {
         if (code) {
             // Ensure examInvitations doc is up to date (backward compat for pre-existing codes)
             App.Storage.syncInvitationDoc(currentExamId, code, exam.name, exam.date,
-                exam.beltSystems || exam.beltSystem)
+                exam.beltSystems || exam.beltSystem, exam.examType || '')
                 .catch(function () {});
         }
 

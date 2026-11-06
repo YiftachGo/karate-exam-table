@@ -243,6 +243,27 @@ App.I18n = (function () {
             dupKeepGraded: 'הרשומה שיש לה ציונים חייבת להישאר — בחרו בה.',
             mergeRecords: 'איחוד',
             notSamePerson: 'לא אותו אדם',
+            // Prep sessions
+            prepSession: 'אימון הכנה',
+            prepSessionHelp: 'אימון לקראת מבחן דרגה: לא מעלה דרגה ולא נחשב "המבחן האחרון" של הנבחנים. בסוף הדף — המלצה לגשת למבחן במקום עבר/נכשל.',
+            filterAll: 'הכל',
+            filterExams: 'מבחנים',
+            filterPrep: 'אימוני הכנה',
+            prepRecommendationCat: 'המלצה לגשת למבחן דרגה',
+            prepRecommended: 'מומלץ',
+            prepNotYet: 'עדיין לא',
+            prepConditional: 'מומלץ בתנאי',
+            prepSummaryTitle: 'סיכום אימון הכנה',
+            prepVerdict_recommended: 'מומלץ',
+            prepVerdict_conditional: 'מומלץ בתנאי',
+            prepVerdict_notyet: 'עדיין לא מומלץ',
+            prepVerdict_mixed: 'דעות חלוקות',
+            prepVerdict_none: 'ללא המלצה',
+            prepChip: 'הכנה',
+            prepNotesTitle: 'הערות מאימון ההכנה',
+            prepNoNotes: 'לא נרשמו הערות באימון ההכנה.',
+            openPrepSession: 'פתח את אימון ההכנה',
+            importFromPrepSubtitle: 'מסומנים מראש רק מי שהומלצו לגשת למבחן. הדרגה נשארת כפי שהייתה — אימון הכנה לא מעלה דרגה.',
             categoryDeleted: 'הקטגוריה נמחקה',
             categoriesDeleted: 'הקטגוריות נמחקו',
             examDeleted: 'המבחן נמחק',
@@ -571,6 +592,27 @@ App.I18n = (function () {
             dupKeepGraded: 'The record with grades must be the one kept — select it.',
             mergeRecords: 'Merge',
             notSamePerson: 'Not the same person',
+            // Prep sessions
+            prepSession: 'Prep session',
+            prepSessionHelp: 'A training session before a rank exam: it promotes nobody and does not count as anyone\x27s "last exam". The final category is a recommendation to sit the exam instead of pass/fail.',
+            filterAll: 'All',
+            filterExams: 'Exams',
+            filterPrep: 'Prep sessions',
+            prepRecommendationCat: 'Recommended for rank exam',
+            prepRecommended: 'Recommended',
+            prepNotYet: 'Not yet',
+            prepConditional: 'Recommended, on condition',
+            prepSummaryTitle: 'Prep Session Summary',
+            prepVerdict_recommended: 'Recommended',
+            prepVerdict_conditional: 'Recommended on condition',
+            prepVerdict_notyet: 'Not yet recommended',
+            prepVerdict_mixed: 'Examiners disagree',
+            prepVerdict_none: 'No recommendation',
+            prepChip: 'Prep',
+            prepNotesTitle: 'Notes from the prep session',
+            prepNoNotes: 'No notes were recorded at the prep session.',
+            openPrepSession: 'Open the prep session',
+            importFromPrepSubtitle: 'Only students recommended for the exam are pre-selected. Belts stay as they are — a prep session promotes nobody.',
             categoryDeleted: 'Category deleted',
             categoriesDeleted: 'Categories deleted',
             examDeleted: 'Exam deleted',
@@ -678,8 +720,10 @@ App.I18n = (function () {
         return currentLang;
     }
 
-    function t(key) {
-        return (strings[currentLang] && strings[currentLang][key]) || key;
+    // lang is optional: a string in a language other than the current one.
+    function t(key, lang) {
+        var l = lang || currentLang;
+        return (strings[l] && strings[l][key]) || key;
     }
 
     function getCategoryName(categoryKey) {

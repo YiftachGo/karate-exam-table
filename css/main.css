@@ -393,3 +393,17 @@ input:focus, select:focus, textarea:focus {
         padding: 0;
     }
 }
+
+/* Prep session (אימון הכנה) marker — exam list, exam table, invite page */
+.prep-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: #ede7f6;
+    color: #4527a0;
+    border: 1px solid #b39ddb;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+}

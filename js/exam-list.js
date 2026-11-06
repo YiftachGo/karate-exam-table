@@ -17,6 +17,18 @@ App.ExamList = (function () {
 
     var VIEW_KEY = 'krt_examview';
     var COLLAPSE_KEY = 'krt_foldercollapse';
+    var TYPE_FILTER_KEY = 'krt_examtypefilter';
+
+    // 'all' | 'exam' | 'prep' — which kind of exam the list shows.
+    function getTypeFilter() {
+        try {
+            var v = localStorage.getItem(TYPE_FILTER_KEY);
+            return v === 'exam' || v === 'prep' ? v : 'all';
+        } catch (e) { return 'all'; }
+    }
+    function setTypeFilter(v) {
+        try { localStorage.setItem(TYPE_FILTER_KEY, v); } catch (e) {}
+    }
 
     function getView() {
         try {
@@ -103,6 +115,18 @@ App.ExamList = (function () {
         html += '<button class="view-toggle-seg' + (view === 'cards' ? ' active' : '') + '" data-view="cards">&#9638; ' + t('viewCards') + '</button>';
         html += '<button class="view-toggle-seg' + (view === 'list' ? ' active' : '') + '" data-view="list">&#9776; ' + t('viewList') + '</button>';
         html += '</div>';
+        // Exams / prep sessions filter — only once there is a prep session to
+        // tell apart (or a filter is still set from earlier).
+        var typeFilter = getTypeFilter();
+        var hasPrep = exams.some(App.Utils.isPrepExam);
+        if (hasPrep || typeFilter !== 'all') {
+            html += '<div class="view-toggle type-filter">';
+            [['all', t('filterAll')], ['exam', t('filterExams')], ['prep', t('filterPrep')]].forEach(function (o) {
+                html += '<button class="type-filter-seg view-toggle-seg' + (typeFilter === o[0] ? ' active' : '') +
+                    '" data-type="' + o[0] + '">' + o[1] + '</button>';
+            });
+            html += '</div>';
+        }
         html += '</div>';
 
         var filtered = filterAndSort(exams);
@@ -132,7 +156,10 @@ App.ExamList = (function () {
     // Search matches the exam name plus its dojo and class, so "תל אביב" or
     // "בוגרים" finds every exam of that group.
     function filterAndSort(exams) {
+        var typeFilter = getTypeFilter();
         var filtered = exams.filter(function (e) {
+            if (typeFilter === 'prep' && !App.Utils.isPrepExam(e)) return false;
+            if (typeFilter === 'exam' && App.Utils.isPrepExam(e)) return false;
             if (!_searchTerm) return true;
             var q = _searchTerm.toLowerCase();
             return [e.name, e.dojo, e.classGroup].some(function (field) {
@@ -264,6 +291,9 @@ App.ExamList = (function () {
             (_canDrag() ? ' draggable="true"' : '') + '>';
         html += '<div class="exam-card-header">';
         html += '<h3>' + esc(exam.name) + '</h3>';
+        if (App.Utils.isPrepExam(exam)) {
+            html += '<span class="prep-pill">' + t('prepSession') + '</span>';
+        }
         if (hasFolders) {
             html += '<button class="btn btn-sm btn-outline folder-move-btn" data-id="' + exam.id +
                 '" title="' + t('moveToFolder') + '">&#128193;</button>';
@@ -311,7 +341,14 @@ App.ExamList = (function () {
             render({ useCache: true });
         });
 
-        document.querySelectorAll('.view-toggle-seg').forEach(function (seg) {
+        document.querySelectorAll('.type-filter-seg').forEach(function (seg) {
+            seg.addEventListener('click', function () {
+                setTypeFilter(seg.dataset.type);
+                render({ useCache: true });
+            });
+        });
+
+        document.querySelectorAll('.view-toggle-seg:not(.type-filter-seg)').forEach(function (seg) {
             seg.addEventListener('click', function () {
                 setView(seg.dataset.view);
                 render({ useCache: true });
@@ -634,7 +671,16 @@ App.ExamList = (function () {
         exam = exam || {};
         var listId = prefix + '-class-suggestions';
 
-        var html = App.Utils.buildClubSelect(prefix + '-dojo', exam.dojo || '', t('dojo'));
+        var html = '<div class="form-group">';
+        html += '<label class="prep-type-check">';
+        html += '<input type="checkbox" id="' + prefix + '-prep"' +
+            (App.Utils.isPrepExam(exam) ? ' checked' : '') + '>';
+        html += '<span>' + t('prepSession') + '</span>';
+        html += '</label>';
+        html += '<p class="field-explanation">' + t('prepSessionHelp') + '</p>';
+        html += '</div>';
+
+        html += App.Utils.buildClubSelect(prefix + '-dojo', exam.dojo || '', t('dojo'));
 
         html += '<div class="form-group">';
         html += '<label for="' + prefix + '-class">' + t('classGroup') + '</label>';
@@ -656,7 +702,8 @@ App.ExamList = (function () {
         return {
             dojo: document.getElementById(prefix + '-dojo').value,
             classGroup: document.getElementById(prefix + '-class').value.trim(),
-            beltSystems: readBeltSystems(prefix)
+            beltSystems: readBeltSystems(prefix),
+            examType: document.getElementById(prefix + '-prep').checked ? 'prep' : ''
         };
     }
 
@@ -763,8 +810,17 @@ App.ExamList = (function () {
                     beltSystems: g.beltSystems,
                     // Must be recomputed whenever dojo or class changes, or the
                     // exam would stay in its old group.
-                    groupKey: App.Utils.examGroupKey(g.dojo, g.classGroup)
+                    groupKey: App.Utils.examGroupKey(g.dojo, g.classGroup),
+                    examType: g.examType
                 });
+                // The public invitation doc carries the type too, so the
+                // registration page marks a prep session. Best-effort: there is
+                // no such doc until an invitation code has been generated.
+                if ((exam.examType || '') !== g.examType) {
+                    App.db.collection('examInvitations').doc(examId)
+                        .update({ examType: g.examType })
+                        .catch(function () {});
+                }
                 close();
                 render();
                 App.showToast(t('dataSaved'));

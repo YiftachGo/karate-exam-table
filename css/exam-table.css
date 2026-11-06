@@ -1234,3 +1234,49 @@ thead .sticky-col {
 }
 .dup-blocked { margin: 0; font-size: 0.85rem; color: var(--accent); flex-basis: 100%; }
 .dup-error { margin-top: 8px; }
+
+/* --- Prep-session notes in the exam that follows --- */
+.prep-chip-slot:empty { display: none; }
+.prep-chip-slot { display: block; margin-top: 4px; }
+.prep-chip {
+    border: 1px solid #c5cae9;
+    background: #e8eaf6;
+    color: #283593;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.prep-chip-recommended { background: #e8f5e9; border-color: #a5d6a7; color: #2e7d32; }
+.prep-chip-conditional { background: #fff3e0; border-color: #ffcc80; color: #e65100; }
+.prep-chip-notyet { background: #ffebee; border-color: #ef9a9a; color: #c62828; }
+.prep-chip-mixed { background: #fffde7; border-color: #fff59d; color: #6d4c41; }
+.prep-chip-none { background: #eceff1; border-color: #cfd8dc; color: #546e7a; }
+
+.prep-notes-source { color: var(--text-secondary); margin: -4px 0 10px; }
+.prep-verdict-box {
+    display: block;
+    border: 1px solid;
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+.prep-notes-cat {
+    border-top: 1px solid var(--border);
+    padding: 8px 0;
+}
+.prep-notes-cat-name { font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+.prep-notes-row { font-size: 0.9rem; margin: 3px 0; }
+.prep-notes-drawing {
+    display: block;
+    max-width: 100%;
+    max-height: 200px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    margin-top: 4px;
+}
+.toolbar .prep-pill { margin-inline-start: 4px; }

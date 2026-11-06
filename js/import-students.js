@@ -88,7 +88,8 @@ App.ImportStudents = (function () {
             html += '<button type="button" class="source-exam-row' + (isSame ? ' source-exam-same' : '') +
                 '" data-idx="' + i + '">';
             html += '<span class="source-exam-main">';
-            html += '<span class="source-exam-name">' + esc(e.name || '') + '</span>';
+            html += '<span class="source-exam-name">' + esc(e.name || '') +
+                (App.Utils.isPrepExam(e) ? ' <span class="prep-pill">' + t('prepSession') + '</span>' : '') + '</span>';
             if (e.dojo || e.classGroup) {
                 html += '<span class="source-exam-group">' +
                     esc([e.dojo, e.classGroup].filter(Boolean).join(' · ')) + '</span>';
@@ -142,7 +143,9 @@ App.ImportStudents = (function () {
 
             var html = '<div class="modal-overlay" id="import-overlay"><div class="modal modal-wide">';
             html += '<h2>' + t('importReviewTitle') + '</h2>';
-            html += '<p class="invite-subtitle">' + t('importReviewSubtitle') + '</p>';
+            var fromPrep = candidates.some(function (c) { return c.fromPrep; });
+            // From a prep session, the recommendation decides who comes over.
+            html += '<p class="invite-subtitle">' + t(fromPrep ? 'importFromPrepSubtitle' : 'importReviewSubtitle') + '</p>';
             html += '<p class="import-source">' + t('previousExamLabel') + ': ' +
                 esc(source.name || '') + (source.date ? ' — ' + App.Utils.formatDate(source.date) : '') + '</p>';
 
@@ -154,6 +157,16 @@ App.ImportStudents = (function () {
                     : c.verdict === 'fail' ? 'verdict-fail' : 'verdict-none';
                 var verdictLabel = c.verdict === 'pass' ? t('passedLastExam')
                     : c.verdict === 'fail' ? t('failedLastExam') : t('notGraded');
+                // Ticked by default: everyone from an exam; from a prep session,
+                // only those recommended (with or without a condition).
+                var ticked = !c.alreadyPresent;
+                if (c.fromPrep) {
+                    verdictClass = c.recommendation === 'recommended' ? 'verdict-pass'
+                        : c.recommendation === 'conditional' ? 'verdict-conditional'
+                        : c.recommendation === 'notyet' ? 'verdict-fail' : 'verdict-none';
+                    verdictLabel = t('prepVerdict_' + c.recommendation);
+                    ticked = ticked && (c.recommendation === 'recommended' || c.recommendation === 'conditional');
+                }
 
                 var rowClass = 'import-row';
                 if (c.promoted) rowClass += ' import-row-promoted';
@@ -165,7 +178,7 @@ App.ImportStudents = (function () {
                 // name+DOB matching can be wrong (two same-named students with no
                 // recorded birthdate collide).
                 html += '<input type="checkbox" class="import-cb" data-idx="' + i + '"' +
-                    (c.alreadyPresent ? '' : ' checked') + '>';
+                    (ticked ? ' checked' : '') + '>';
                 html += '<span class="import-name">' + esc(c.firstName + ' ' + c.lastName) + '</span>';
                 if (c.alreadyPresent) {
                     html += '<span class="import-present-badge">' + t('alreadyInThisExam') + '</span>';

@@ -42,6 +42,17 @@ App.InvitePage = (function () {
         } catch (e) {}
     }
 
+    // The exam's name, marked when it is a prep session so a student can tell
+    // it apart from the rank exam itself.
+    function examTitleHtml() {
+        if (!verifiedExam) return '';
+        var html = App.Utils.escapeHtml(verifiedExam.name || '');
+        if (App.Utils.isPrepExam(verifiedExam)) {
+            html += ' <span class="prep-pill">' + App.I18n.t('prepSession') + '</span>';
+        }
+        return html;
+    }
+
     function editRoute(examId, reg) {
         return '#/invite/' + examId + '/edit/' + reg.examineeId + '?t=' + encodeURIComponent(reg.token);
     }
@@ -420,6 +431,7 @@ App.InvitePage = (function () {
         var html = '<div class="invite-page">';
         html += '<div class="invite-card invite-card-wide">';
         html += '<h2>' + t('identifyYourself') + '</h2>';
+        html += '<p class="invite-exam-name">' + examTitleHtml() + '</p>';
         html += '<p class="invite-subtitle">' + t('identifySubtitle') + '</p>';
         html += '<div class="detail-form">';
         html += '<div class="form-row">';
@@ -636,8 +648,10 @@ App.InvitePage = (function () {
     }
 
     // What a returning student's form starts with. Gasshukus and belt trainings
-    // are deliberately not carried over: both are asked "since your last exam",
-    // so last time's answers would be wrong this time.
+    // are asked "since your last exam", so they are carried over only when the
+    // previous record is a prep session (אימון הכנה) — that was not an exam, so
+    // what they reported there still counts. After a real exam they start empty.
+    // (They are handed to bindPhotoAndSubmit separately; see showRegistrationForm.)
     function prefillFromDirectory(entry) {
         return {
             firstName: entry.firstName || '',
@@ -662,17 +676,20 @@ App.InvitePage = (function () {
 
         container.innerHTML = buildRegistrationFormHtml(
             entry ? t('weFoundYou') : t('registrationTitle'),
-            App.Utils.escapeHtml(verifiedExam.name) + ' — ' +
+            examTitleHtml() + ' — ' +
                 (entry ? t('welcomeBack') : t('registrationSubtitle')),
             t('submitRegistration'),
             prefill
         );
 
         var registerOpts = {};
+        var carryOver = !!(entry && entry.sourceIsPrep);
         if (entry) {
             registerOpts.addedBy = 'self-registration:returning';
             if (entry.sourceExamId && entry.sourceExamineeId) {
-                registerOpts.linkedRecordIds = [entry.sourceExamId + '__' + entry.sourceExamineeId];
+                var linkId = entry.sourceExamId + '__' + entry.sourceExamineeId;
+                registerOpts.linkedRecordIds = [linkId];
+                if (carryOver) registerOpts.prepRecordId = linkId;
             }
         }
 
@@ -698,8 +715,8 @@ App.InvitePage = (function () {
             // A returning student's last photo counts, so they need not upload
             // again — but only a real one; otherwise the form asks for a photo.
             entry ? (prefill.photoUrl || null) : null,
-            [],
-            []
+            carryOver && Array.isArray(entry.gasshukus) ? entry.gasshukus : [],
+            carryOver && Array.isArray(entry.beltTrainings) ? entry.beltTrainings : []
         );
     }
 

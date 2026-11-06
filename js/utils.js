@@ -467,6 +467,35 @@ App.Utils = (function () {
         return looseName(d.firstName) + '|' + looseName(d.lastName) + '|' + dobDigits(d.dateOfBirth);
     }
 
+    // --- Pre-exam training sessions (אימון הכנה) ---
+    //
+    // A prep session is graded like an exam, but it is not one: nobody is
+    // promoted by it, it is never anyone's "last exam", and its final category
+    // records a recommendation to sit the rank exam rather than a pass/fail.
+    // The stored values stay 'pass' | 'fail' | 'conditional:<text>' so every
+    // existing grading path works unchanged; only their meaning and labels differ.
+
+    function isPrepExam(exam) {
+        return !!exam && exam.examType === 'prep';
+    }
+
+    // Overall recommendation from every trainer's rank_approval value:
+    // 'recommended' | 'conditional' | 'notyet' | 'mixed' (trainers disagree) | 'none'.
+    function prepVerdict(trainerGrades) {
+        var yes = false, cond = false, no = false;
+        (trainerGrades || []).forEach(function (g) {
+            var v = (g && g.rank_approval) || '';
+            if (v === 'pass') yes = true;
+            else if (v.indexOf('conditional:') === 0) cond = true;
+            else if (v === 'fail') no = true;
+        });
+        if (no && (yes || cond)) return 'mixed';
+        if (no) return 'notyet';
+        if (cond) return 'conditional';
+        if (yes) return 'recommended';
+        return 'none';
+    }
+
     // One person, as a document-ID-safe string: folded first name, folded last
     // name, birthdate digits. '' unless all three are present, since a partial key
     // could collide between different people. Used for the per-exam registration
@@ -605,6 +634,8 @@ App.Utils = (function () {
         examGroupKey: examGroupKey,
         examineeMatchKey: examineeMatchKey,
         personKey: personKey,
+        isPrepExam: isPrepExam,
+        prepVerdict: prepVerdict,
         findDuplicateGroups: findDuplicateGroups,
         renderGasshukuList: renderGasshukuList,
         readGasshukuList: readGasshukuList,
